@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
@@ -26,8 +26,8 @@ export interface GhostControls {
   hide: () => void;
 }
 
-/** How long (ms) a still hold takes before it's treated as a long-press menu request. */
-const MENU_HOLD_MS = 350;
+/** How long (ms) a still hold takes before it opens the duplicate/delete menu. */
+const LONG_PRESS_MENU_MS = 450;
 
 interface Props {
   chordId: string;
@@ -47,8 +47,14 @@ interface Props {
 /**
  * A chord tile that can be tapped (play sound), held and dragged (its whole
  * magnet group moves together), or held still to open a duplicate/delete
- * context menu. Requires a brief hold before the drag activates so it plays
- * nicely inside the palette's and board's scroll views.
+ * context menu.
+ *
+ * The drag (`pan`) and the menu (`longPress`) are deliberately independent,
+ * simultaneous gestures rather than one gesture that branches based on
+ * timing/movement heuristics — an earlier version tried to have `pan` itself
+ * decide "is this actually a still hold?" and suppress the drop if so, which
+ * turned out to misfire on real devices and broke dropping entirely. Now
+ * `pan`'s drop logic never depends on anything long-press-related.
  */
 export function DraggableTile({
   chordId,
@@ -63,10 +69,6 @@ export function DraggableTile({
 }: Props) {
   const chord = getChord(chordId);
   const hiddenWhileDragging = useSharedValue(0);
-  /** True once the finger has moved at all since the drag started — permanently disqualifies the long-press menu for this gesture. */
-  const hasMoved = useSharedValue(0);
-  const dropSuppressed = useSharedValue(0);
-  const menuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const resolveDrop = (relX: number, relY: number, boardWidth: number) => {
     const cellSize = boardWidth / BOARD_COLS;
@@ -81,54 +83,24 @@ export function DraggableTile({
     ghost.show(shape.tiles, shape.cellSize);
   };
 
-  const clearMenuTimer = () => {
-    if (menuTimerRef.current) {
-      clearTimeout(menuTimerRef.current);
-      menuTimerRef.current = null;
-    }
-  };
-
-  const armMenuTimer = (screenX: number, screenY: number) => {
-    clearMenuTimer();
-    menuTimerRef.current = setTimeout(() => {
-      menuTimerRef.current = null;
-      if (!hasMoved.value) {
-        dropSuppressed.value = 1;
-        ghost.opacity.value = 0;
-        ghost.hide();
-        onLongPressMenu?.(screenX, screenY);
-      }
-    }, MENU_HOLD_MS);
-  };
-
+  // Requires a brief hold before activating so it plays nicely inside the
+  // palette's and board's scroll views (a quick scroll swipe never holds
+  // still long enough to trigger it). Once activated, behaves exactly like a
+  // plain pan: it always attempts a drop on release.
   const pan = Gesture.Pan()
     .activateAfterLongPress(120)
     .onStart((e) => {
-      hasMoved.value = 0;
-      dropSuppressed.value = 0;
       hiddenWhileDragging.value = 1;
       ghost.opacity.value = 1;
       ghost.x.value = e.absoluteX - size / 2;
       ghost.y.value = e.absoluteY - size / 2;
       runOnJS(startGhost)();
-      runOnJS(armMenuTimer)(e.absoluteX, e.absoluteY);
     })
     .onUpdate((e) => {
-      if (dropSuppressed.value) return;
-      // Any real movement permanently rules out the still-hold menu for this
-      // gesture — cancel the pending timer once, right away, rather than
-      // waiting for it to fire and checking a movement threshold. A one-shot
-      // distance check at a fixed delay was too easy to misfire on a real
-      // device (a natural brief pause mid-drag looked like a "still hold").
-      if (!hasMoved.value) {
-        hasMoved.value = 1;
-        runOnJS(clearMenuTimer)();
-      }
       ghost.x.value = e.absoluteX - size / 2;
       ghost.y.value = e.absoluteY - size / 2;
     })
     .onEnd((e) => {
-      if (dropSuppressed.value) return;
       const withinX = e.absoluteX >= board.x.value && e.absoluteX <= board.x.value + board.width.value;
       const withinY = e.absoluteY >= board.y.value && e.absoluteY <= board.y.value + board.height.value;
       if (withinX && withinY) {
@@ -140,8 +112,6 @@ export function DraggableTile({
     .onFinalize(() => {
       hiddenWhileDragging.value = 0;
       ghost.opacity.value = 0;
-      dropSuppressed.value = 0;
-      runOnJS(clearMenuTimer)();
       runOnJS(ghost.hide)();
     });
 
@@ -151,7 +121,18 @@ export function DraggableTile({
       runOnJS(onTap)();
     });
 
-  const gesture = disabled ? tap : Gesture.Exclusive(pan, tap);
+  // A still hold (native maxDistance gate, not a hand-rolled timer) opens the
+  // menu. Runs alongside `pan`/`tap` without cancelling either.
+  const longPress = Gesture.LongPress()
+    .minDuration(LONG_PRESS_MENU_MS)
+    .onStart((e) => {
+      if (onLongPressMenu) {
+        runOnJS(onLongPressMenu)(e.absoluteX, e.absoluteY);
+      }
+    });
+
+  const dragOrTap = Gesture.Exclusive(pan, tap);
+  const gesture = disabled ? tap : Gesture.Simultaneous(dragOrTap, longPress);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: hiddenWhileDragging.value ? 0 : 1,
