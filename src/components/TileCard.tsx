@@ -22,10 +22,10 @@ export function TileCard({ chord, size, selected = false }: Props) {
         selected && styles.selected,
       ]}
     >
-      <Text style={styles.name} numberOfLines={1}>
+      <Text style={styles.name} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
         {chord.name}
       </Text>
-      <ChordDiagram chord={chord} width={size * 0.56} />
+      <ChordDiagram chord={chord} width={size * 0.82} />
     </View>
   );
 }
@@ -39,6 +39,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
+    paddingHorizontal: 4,
   },
   selected: {
     borderColor: colors.selection,
@@ -46,7 +47,7 @@ const styles = StyleSheet.create({
   },
   name: {
     color: colors.text,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
   },
 });

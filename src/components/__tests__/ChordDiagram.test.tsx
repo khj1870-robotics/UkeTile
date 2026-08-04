@@ -6,9 +6,9 @@ import { getChord } from '@/data/chords';
 
 describe('ChordDiagram', () => {
   it('renders a diagram for a known chord', () => {
-    const chord = getChord('C')!;
+    const chord = getChord('C-maj')!;
     const { getByTestId } = render(<ChordDiagram chord={chord} width={60} />);
-    expect(getByTestId('chord-diagram-C')).toBeTruthy();
+    expect(getByTestId('chord-diagram-C-maj')).toBeTruthy();
   });
 
   it('renders without crashing for every chord in the library', () => {

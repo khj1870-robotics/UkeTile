@@ -13,10 +13,10 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const samplesDir = join(root, 'assets', 'samples');
 
-// Ukulele GCEA open strings are G4(67) C4(60) E4(64) A4(69); with frets up to
-// 7 the highest note is A4+7 = 76.
+// Ukulele GCEA open strings are G4(67) C4(60) E4(64) A4(69); the chord-shape
+// generator searches frets up to 11, so the highest reachable note is A4+11 = 80.
 const MIDI_MIN = 60;
-const MIDI_MAX = 76;
+const MIDI_MAX = 80;
 
 const SAMPLE_RATE = 22050;
 const DURATION_S = 1.4;

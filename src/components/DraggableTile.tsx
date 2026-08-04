@@ -27,9 +27,7 @@ export interface GhostControls {
 }
 
 /** How long (ms) a still hold takes before it's treated as a long-press menu request. */
-const MENU_HOLD_MS = 300;
-/** Cumulative finger movement (px) under which a hold still counts as "still". */
-const MENU_MOVE_THRESHOLD = 8;
+const MENU_HOLD_MS = 350;
 
 interface Props {
   chordId: string;
@@ -65,7 +63,8 @@ export function DraggableTile({
 }: Props) {
   const chord = getChord(chordId);
   const hiddenWhileDragging = useSharedValue(0);
-  const totalMovement = useSharedValue(0);
+  /** True once the finger has moved at all since the drag started — permanently disqualifies the long-press menu for this gesture. */
+  const hasMoved = useSharedValue(0);
   const dropSuppressed = useSharedValue(0);
   const menuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -93,7 +92,7 @@ export function DraggableTile({
     clearMenuTimer();
     menuTimerRef.current = setTimeout(() => {
       menuTimerRef.current = null;
-      if (totalMovement.value < MENU_MOVE_THRESHOLD) {
+      if (!hasMoved.value) {
         dropSuppressed.value = 1;
         ghost.opacity.value = 0;
         ghost.hide();
@@ -105,7 +104,7 @@ export function DraggableTile({
   const pan = Gesture.Pan()
     .activateAfterLongPress(120)
     .onStart((e) => {
-      totalMovement.value = 0;
+      hasMoved.value = 0;
       dropSuppressed.value = 0;
       hiddenWhileDragging.value = 1;
       ghost.opacity.value = 1;
@@ -116,7 +115,15 @@ export function DraggableTile({
     })
     .onUpdate((e) => {
       if (dropSuppressed.value) return;
-      totalMovement.value = Math.hypot(e.translationX, e.translationY);
+      // Any real movement permanently rules out the still-hold menu for this
+      // gesture — cancel the pending timer once, right away, rather than
+      // waiting for it to fire and checking a movement threshold. A one-shot
+      // distance check at a fixed delay was too easy to misfire on a real
+      // device (a natural brief pause mid-drag looked like a "still hold").
+      if (!hasMoved.value) {
+        hasMoved.value = 1;
+        runOnJS(clearMenuTimer)();
+      }
       ghost.x.value = e.absoluteX - size / 2;
       ghost.y.value = e.absoluteY - size / 2;
     })

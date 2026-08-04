@@ -6,49 +6,50 @@ import { colors } from '@/theme';
 
 interface Props {
   chord: Chord;
-  /** Rendered width in px; height follows a 6:7 ratio. */
+  /** Rendered width in px; height follows a horizontal (wider-than-tall) ratio. */
   width: number;
 }
 
-const FRET_ROWS = 4;
+const FRET_COLS = 4;
 
 /**
- * A standard vertical ukulele chord chart: 4 strings (G C E A left to right),
- * nut on top, finger dots on fretted strings, open circles above open strings.
+ * A horizontal ukulele chord chart: 4 strings (G C E A top to bottom), nut on
+ * the left, frets running rightward, finger dots on fretted strings, open
+ * circles to the left of open strings.
  */
 export function ChordDiagram({ chord, width }: Props) {
-  const height = (width * 7) / 6;
-  const paddingX = width * 0.14;
-  const paddingTop = height * 0.18;
-  const paddingBottom = height * 0.08;
+  const height = width * 0.58;
+  const paddingLeft = width * 0.16;
+  const paddingRight = width * 0.06;
+  const paddingV = height * 0.14;
 
-  const gridWidth = width - paddingX * 2;
-  const gridHeight = height - paddingTop - paddingBottom;
-  const stringGap = gridWidth / 3;
-  const fretGap = gridHeight / FRET_ROWS;
+  const gridWidth = width - paddingLeft - paddingRight;
+  const gridHeight = height - paddingV * 2;
+  const stringGap = gridHeight / 3;
+  const fretGap = gridWidth / FRET_COLS;
   const dotRadius = Math.min(stringGap, fretGap) * 0.32;
 
-  const stringX = (string: number) => paddingX + string * stringGap;
+  const stringY = (string: number) => paddingV + string * stringGap;
 
   return (
     <Svg width={width} height={height} testID={`chord-diagram-${chord.id}`}>
       {/* Nut */}
       <Rect
-        x={paddingX - 1}
-        y={paddingTop - 3}
-        width={gridWidth + 2}
-        height={3}
+        x={paddingLeft - 3}
+        y={paddingV - 1}
+        width={3}
+        height={gridHeight + 2}
         fill={colors.text}
         rx={1}
       />
       {/* Frets */}
-      {Array.from({ length: FRET_ROWS }, (_, i) => (
+      {Array.from({ length: FRET_COLS }, (_, i) => (
         <Line
           key={`fret-${i}`}
-          x1={paddingX}
-          y1={paddingTop + (i + 1) * fretGap}
-          x2={paddingX + gridWidth}
-          y2={paddingTop + (i + 1) * fretGap}
+          x1={paddingLeft + (i + 1) * fretGap}
+          y1={paddingV}
+          x2={paddingLeft + (i + 1) * fretGap}
+          y2={paddingV + gridHeight}
           stroke={colors.textDim}
           strokeWidth={1}
         />
@@ -57,10 +58,10 @@ export function ChordDiagram({ chord, width }: Props) {
       {Array.from({ length: 4 }, (_, string) => (
         <Line
           key={`string-${string}`}
-          x1={stringX(string)}
-          y1={paddingTop}
-          x2={stringX(string)}
-          y2={paddingTop + gridHeight}
+          x1={paddingLeft}
+          y1={stringY(string)}
+          x2={paddingLeft + gridWidth}
+          y2={stringY(string)}
           stroke={colors.text}
           strokeWidth={1.2}
         />
@@ -70,8 +71,8 @@ export function ChordDiagram({ chord, width }: Props) {
         fret === 0 ? (
           <Circle
             key={`marker-${string}`}
-            cx={stringX(string)}
-            cy={paddingTop - height * 0.09}
+            cx={paddingLeft - width * 0.08}
+            cy={stringY(string)}
             r={dotRadius * 0.7}
             stroke={colors.textDim}
             strokeWidth={1.2}
@@ -80,8 +81,8 @@ export function ChordDiagram({ chord, width }: Props) {
         ) : (
           <Circle
             key={`marker-${string}`}
-            cx={stringX(string)}
-            cy={paddingTop + (fret - 0.5) * fretGap}
+            cx={paddingLeft + (fret - 0.5) * fretGap}
+            cy={stringY(string)}
             r={dotRadius}
             fill={colors.accent}
           />

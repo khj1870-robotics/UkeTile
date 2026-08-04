@@ -19,7 +19,11 @@ export const NOTE_SAMPLES: Record<number, number> = {
   74: require('@/assets/samples/note-74.wav'),
   75: require('@/assets/samples/note-75.wav'),
   76: require('@/assets/samples/note-76.wav'),
+  77: require('@/assets/samples/note-77.wav'),
+  78: require('@/assets/samples/note-78.wav'),
+  79: require('@/assets/samples/note-79.wav'),
+  80: require('@/assets/samples/note-80.wav'),
 };
 
 export const SAMPLE_MIDI_MIN = 60;
-export const SAMPLE_MIDI_MAX = 76;
+export const SAMPLE_MIDI_MAX = 80;
