@@ -1,6 +1,8 @@
 import {
   cellKey,
-  duplicatePlacements,
+  computeGroups,
+  groupShape,
+  nearestFreeAnchor,
   nearestFreeCell,
   pointToCell,
   rowCount,
@@ -52,38 +54,162 @@ describe('nearestFreeCell', () => {
   });
 });
 
-describe('duplicatePlacements', () => {
-  it('places each duplicate on the free cell nearest its original', () => {
-    const tiles: PlacedTile[] = [
-      { id: 'a', col: 0, row: 0 },
-      { id: 'b', col: 2, row: 2 },
-    ];
-    const placements = duplicatePlacements(tiles, ['a', 'b'], 4);
-    expect(placements.size).toBe(2);
-    expect(placements.get('a')).not.toEqual({ col: 0, row: 0 });
-    expect(placements.get('b')).not.toEqual({ col: 2, row: 2 });
+describe('computeGroups', () => {
+  it('returns no groups for an empty board', () => {
+    expect(computeGroups([])).toEqual([]);
   });
 
-  it('does not place two duplicates on the same cell', () => {
+  it('treats isolated tiles as separate singleton groups', () => {
+    const tiles: PlacedTile[] = [
+      { id: 'a', col: 0, row: 0 },
+      { id: 'b', col: 3, row: 3 },
+    ];
+    const groups = computeGroups(tiles).map((g) => g.sort());
+    expect(groups).toHaveLength(2);
+    expect(groups).toContainEqual(['a']);
+    expect(groups).toContainEqual(['b']);
+  });
+
+  it('connects a plus-shaped cluster into one group', () => {
+    const tiles: PlacedTile[] = [
+      { id: 'center', col: 1, row: 1 },
+      { id: 'up', col: 1, row: 0 },
+      { id: 'down', col: 1, row: 2 },
+      { id: 'left', col: 0, row: 1 },
+      { id: 'right', col: 2, row: 1 },
+    ];
+    const groups = computeGroups(tiles);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].sort()).toEqual(['center', 'down', 'left', 'right', 'up']);
+  });
+
+  it('connects an L-shape into one group', () => {
+    const tiles: PlacedTile[] = [
+      { id: 'a', col: 0, row: 0 },
+      { id: 'b', col: 0, row: 1 },
+      { id: 'c', col: 1, row: 1 },
+    ];
+    expect(computeGroups(tiles)).toHaveLength(1);
+  });
+
+  it('keeps separate clusters apart', () => {
     const tiles: PlacedTile[] = [
       { id: 'a', col: 0, row: 0 },
       { id: 'b', col: 1, row: 0 },
+      { id: 'c', col: 3, row: 3 },
+      { id: 'd', col: 4, row: 3 },
     ];
-    const placements = duplicatePlacements(tiles, ['a', 'b'], 4);
-    const keys = [...placements.values()].map(cellKey);
-    expect(new Set(keys).size).toBe(keys.length);
+    const groups = computeGroups(tiles).map((g) => g.sort());
+    expect(groups).toHaveLength(2);
+    expect(groups).toContainEqual(['a', 'b']);
+    expect(groups).toContainEqual(['c', 'd']);
   });
 
-  it('duplicates several tiles at once without colliding', () => {
+  it('does not connect diagonally-adjacent tiles', () => {
+    const tiles: PlacedTile[] = [
+      { id: 'a', col: 0, row: 0 },
+      { id: 'b', col: 1, row: 1 },
+    ];
+    expect(computeGroups(tiles)).toHaveLength(2);
+  });
+
+  it('connects a straight line of tiles', () => {
     const tiles: PlacedTile[] = [
       { id: 'a', col: 0, row: 0 },
       { id: 'b', col: 1, row: 0 },
       { id: 'c', col: 2, row: 0 },
+      { id: 'd', col: 3, row: 0 },
     ];
-    const placements = duplicatePlacements(tiles, ['a', 'b', 'c'], 4);
-    expect(placements.size).toBe(3);
-    const allKeys = [...tiles.map(cellKey), ...[...placements.values()].map(cellKey)];
-    expect(new Set(allKeys).size).toBe(allKeys.length);
+    expect(computeGroups(tiles)).toHaveLength(1);
+  });
+});
+
+describe('groupShape', () => {
+  it('returns null for an unknown tile id', () => {
+    expect(groupShape([{ id: 'a', col: 0, row: 0 }], 'missing')).toBeNull();
+  });
+
+  it('maps an isolated tile to itself at the origin', () => {
+    const shape = groupShape([{ id: 'a', col: 5, row: 5 }], 'a');
+    expect(shape).toEqual(new Map([['a', { col: 0, row: 0 }]]));
+  });
+
+  it('computes consistent offsets regardless of which member is the reference', () => {
+    const tiles: PlacedTile[] = [
+      { id: 'a', col: 0, row: 0 },
+      { id: 'b', col: 1, row: 0 },
+    ];
+    const fromA = groupShape(tiles, 'a')!;
+    expect(fromA.get('a')).toEqual({ col: 0, row: 0 });
+    expect(fromA.get('b')).toEqual({ col: 1, row: 0 });
+
+    const fromB = groupShape(tiles, 'b')!;
+    expect(fromB.get('b')).toEqual({ col: 0, row: 0 });
+    expect(fromB.get('a')).toEqual({ col: -1, row: 0 });
+  });
+
+  it('computes internally-consistent offsets for an L-shape from a non-corner reference', () => {
+    const tiles: PlacedTile[] = [
+      { id: 'a', col: 2, row: 2 },
+      { id: 'b', col: 2, row: 3 },
+      { id: 'c', col: 3, row: 3 },
+    ];
+    const shape = groupShape(tiles, 'b')!;
+    const byId = new Map(tiles.map((t) => [t.id, t]));
+    const origin = byId.get('b')!;
+    for (const [id, offset] of shape) {
+      const real = byId.get(id)!;
+      expect(offset).toEqual({ col: real.col - origin.col, row: real.row - origin.row });
+    }
+  });
+});
+
+describe('nearestFreeAnchor', () => {
+  it('behaves like nearestFreeCell for a single-cell shape', () => {
+    const tiles: PlacedTile[] = [{ id: 'a', col: 1, row: 1 }];
+    const anchor = nearestFreeAnchor(tiles, [{ col: 0, row: 0 }], { col: 1, row: 1 }, 4);
+    expect(anchor).not.toEqual({ col: 1, row: 1 });
+  });
+
+  it('places a multi-cell shape at the target when fully free', () => {
+    const shape = [{ col: 0, row: 0 }, { col: 1, row: 0 }];
+    const anchor = nearestFreeAnchor([], shape, { col: 0, row: 0 }, 4);
+    expect(anchor).toEqual({ col: 0, row: 0 });
+  });
+
+  it('avoids collisions when part of the shape would overlap an existing tile', () => {
+    const tiles: PlacedTile[] = [{ id: 'x', col: 1, row: 0 }];
+    const shape = [{ col: 0, row: 0 }, { col: 1, row: 0 }];
+    const anchor = nearestFreeAnchor(tiles, shape, { col: 0, row: 0 }, 4);
+    const occupiedByShape = shape.map((o) => cellKey({ col: anchor.col + o.col, row: anchor.row + o.row }));
+    expect(occupiedByShape).not.toContain(cellKey(tiles[0]));
+  });
+
+  it('lets a group drop back onto its own current cells via excludeIds', () => {
+    const tiles: PlacedTile[] = [
+      { id: 'a', col: 2, row: 2 },
+      { id: 'b', col: 3, row: 2 },
+    ];
+    const shape = [{ col: 0, row: 0 }, { col: 1, row: 0 }];
+    const anchor = nearestFreeAnchor(tiles, shape, { col: 2, row: 2 }, 4, new Set(['a', 'b']));
+    expect(anchor).toEqual({ col: 2, row: 2 });
+  });
+
+  it('moves to a new row when the whole target row is packed', () => {
+    const tiles: PlacedTile[] = [
+      { id: 'a', col: 0, row: 0 },
+      { id: 'b', col: 1, row: 0 },
+      { id: 'c', col: 2, row: 0 },
+      { id: 'd', col: 3, row: 0 },
+    ];
+    const anchor = nearestFreeAnchor(tiles, [{ col: 0, row: 0 }], { col: 1, row: 0 }, 4);
+    expect(anchor.row).toBeGreaterThan(0);
+  });
+
+  it('terminates for a shape wider than the grid (defensive path)', () => {
+    const shape = [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }, { col: 4, row: 0 }];
+    const anchor = nearestFreeAnchor([], shape, { col: 0, row: 0 }, 4);
+    expect(anchor).toBeDefined();
   });
 });
 

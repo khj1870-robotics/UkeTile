@@ -1,15 +1,22 @@
 import { useState } from 'react';
 import { useSharedValue } from 'react-native-reanimated';
 
-interface GhostState {
+export interface GhostTileSpec {
   chordId: string;
-  size: number;
+  /** Column/row offset from the dragged tile, in cells. */
+  dCol: number;
+  dRow: number;
+}
+
+interface GhostState {
+  tiles: GhostTileSpec[];
+  cellSize: number;
 }
 
 /**
- * Shared drag-ghost state: position/opacity live as shared values (driven from
- * gesture worklets), while which chord/size to render is plain React state
- * (set via the `show`/`hide` callbacks, which worklets call through runOnJS).
+ * Shared drag-ghost state for a whole magnet group: position/opacity live as
+ * shared values (driven from gesture worklets), while which tiles/shape to
+ * render is plain React state (set via `show`/`hide`, called through runOnJS).
  */
 export function useGhostControls() {
   const x = useSharedValue(0);
@@ -21,9 +28,9 @@ export function useGhostControls() {
     x,
     y,
     opacity,
-    chordId: state?.chordId ?? null,
-    size: state?.size ?? 0,
-    show: (chordId: string, size: number) => setState({ chordId, size }),
+    tiles: state?.tiles ?? [],
+    cellSize: state?.cellSize ?? 0,
+    show: (tiles: GhostTileSpec[], cellSize: number) => setState({ tiles, cellSize }),
     hide: () => setState(null),
   };
 }

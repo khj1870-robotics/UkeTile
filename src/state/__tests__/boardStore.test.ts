@@ -6,7 +6,6 @@ function resetStore() {
   useBoardStore.setState({
     boards: [{ id: 'board-1', name: '보드 1', tiles: [] }],
     activeBoardId: 'board-1',
-    selectedIds: [],
   });
 }
 
@@ -32,49 +31,137 @@ describe('boardStore', () => {
     expect(tiles[0]).not.toEqual(tiles[1]);
   });
 
-  it('moves a tile to a new cell', () => {
+  it('moveGroup moves an isolated tile like the old single-tile move', () => {
     act(() => useBoardStore.getState().addTile('C', { col: 0, row: 0 }));
     const tileId = useBoardStore.getState().boards[0].tiles[0].id;
-    act(() => useBoardStore.getState().moveTile(tileId, { col: 2, row: 2 }));
+    act(() => useBoardStore.getState().moveGroup(tileId, { col: 2, row: 2 }));
     const tile = useBoardStore.getState().boards[0].tiles[0];
     expect(tile).toMatchObject({ col: 2, row: 2 });
   });
 
-  it('removes tiles and clears them from the selection', () => {
-    act(() => useBoardStore.getState().addTile('C', { col: 0, row: 0 }));
-    const tileId = useBoardStore.getState().boards[0].tiles[0].id;
+  it('moveGroup moves a connected pair together, preserving relative offset, without touching an unrelated tile', () => {
     act(() => {
-      useBoardStore.getState().toggleSelected(tileId);
-      useBoardStore.getState().removeTiles([tileId]);
+      useBoardStore.setState((state) => ({
+        boards: state.boards.map((b) => ({
+          ...b,
+          tiles: [
+            { id: 'a', chordId: 'C', col: 0, row: 0 },
+            { id: 'b', chordId: 'G', col: 1, row: 0 },
+            { id: 'c', chordId: 'Am', col: 3, row: 3 },
+          ],
+        })),
+      }));
     });
-    expect(useBoardStore.getState().boards[0].tiles).toHaveLength(0);
-    expect(useBoardStore.getState().selectedIds).toHaveLength(0);
-  });
 
-  it('duplicates multiple selected tiles at once without collisions', () => {
-    act(() => {
-      useBoardStore.getState().addTile('C', { col: 0, row: 0 });
-      useBoardStore.getState().addTile('G', { col: 1, row: 0 });
-    });
-    const originalIds = useBoardStore.getState().boards[0].tiles.map((t) => t.id);
-
-    act(() => useBoardStore.getState().duplicateTiles(originalIds));
+    act(() => useBoardStore.getState().moveGroup('a', { col: 2, row: 2 }));
 
     const tiles = useBoardStore.getState().boards[0].tiles;
-    expect(tiles).toHaveLength(4);
-    const keys = tiles.map((t) => `${t.col},${t.row}`);
-    expect(new Set(keys).size).toBe(4);
-    const chordIds = tiles.map((t) => t.chordId).sort();
-    expect(chordIds).toEqual(['C', 'C', 'G', 'G']);
+    const byId = new Map(tiles.map((t) => [t.id, t]));
+    expect(byId.get('a')).toMatchObject({ col: 2, row: 2 });
+    expect(byId.get('b')).toMatchObject({ col: 3, row: 2 });
+    expect(byId.get('c')).toMatchObject({ col: 3, row: 3 });
   });
 
-  it('toggles tile selection on and off', () => {
+  it('moveGroup dragging a non-reference member moves the whole group relative to it', () => {
+    act(() => {
+      useBoardStore.setState((state) => ({
+        boards: state.boards.map((b) => ({
+          ...b,
+          tiles: [
+            { id: 'a', chordId: 'C', col: 0, row: 0 },
+            { id: 'b', chordId: 'G', col: 1, row: 0 },
+          ],
+        })),
+      }));
+    });
+
+    act(() => useBoardStore.getState().moveGroup('b', { col: 2, row: 5 }));
+
+    const tiles = useBoardStore.getState().boards[0].tiles;
+    const byId = new Map(tiles.map((t) => [t.id, t]));
+    expect(byId.get('b')).toMatchObject({ col: 2, row: 5 });
+    expect(byId.get('a')).toMatchObject({ col: 1, row: 5 });
+  });
+
+  it('moveGroup on an unknown tile id is a no-op', () => {
     act(() => useBoardStore.getState().addTile('C', { col: 0, row: 0 }));
-    const tileId = useBoardStore.getState().boards[0].tiles[0].id;
-    act(() => useBoardStore.getState().toggleSelected(tileId));
-    expect(useBoardStore.getState().selectedIds).toEqual([tileId]);
-    act(() => useBoardStore.getState().toggleSelected(tileId));
-    expect(useBoardStore.getState().selectedIds).toEqual([]);
+    const before = useBoardStore.getState().boards[0].tiles;
+    act(() => useBoardStore.getState().moveGroup('missing', { col: 2, row: 2 }));
+    expect(useBoardStore.getState().boards[0].tiles).toEqual(before);
+  });
+
+  it('duplicateGroup duplicates a connected L-shape as one unit with no overlaps', () => {
+    act(() => {
+      useBoardStore.setState((state) => ({
+        boards: state.boards.map((b) => ({
+          ...b,
+          tiles: [
+            { id: 'a', chordId: 'C', col: 0, row: 0 },
+            { id: 'b', chordId: 'G', col: 0, row: 1 },
+            { id: 'c', chordId: 'Am', col: 1, row: 1 },
+          ],
+        })),
+      }));
+    });
+
+    act(() => useBoardStore.getState().duplicateGroup('a'));
+
+    const tiles = useBoardStore.getState().boards[0].tiles;
+    expect(tiles).toHaveLength(6);
+    const keys = tiles.map((t) => `${t.col},${t.row}`);
+    expect(new Set(keys).size).toBe(6);
+
+    const originals = tiles.filter((t) => ['a', 'b', 'c'].includes(t.id));
+    const copies = tiles.filter((t) => !['a', 'b', 'c'].includes(t.id));
+    expect(copies).toHaveLength(3);
+    const copyChords = copies.map((t) => t.chordId).sort();
+    expect(copyChords).toEqual(['Am', 'C', 'G']);
+
+    const copyByChord = new Map(copies.map((t) => [t.chordId, t]));
+    const originByChord = new Map(originals.map((t) => [t.chordId, t]));
+    const relOf = (t: { col: number; row: number }, origin: { col: number; row: number }) => ({
+      col: t.col - origin.col,
+      row: t.row - origin.row,
+    });
+    const copyOrigin = copyByChord.get('C')!;
+    const originOrigin = originByChord.get('C')!;
+    for (const chord of ['C', 'G', 'Am']) {
+      expect(relOf(copyByChord.get(chord)!, copyOrigin)).toEqual(relOf(originByChord.get(chord)!, originOrigin));
+    }
+  });
+
+  it('duplicateGroup on an unknown tile id is a no-op', () => {
+    act(() => useBoardStore.getState().addTile('C', { col: 0, row: 0 }));
+    const before = useBoardStore.getState().boards[0].tiles;
+    act(() => useBoardStore.getState().duplicateGroup('missing'));
+    expect(useBoardStore.getState().boards[0].tiles).toEqual(before);
+  });
+
+  it('removeGroup removes every connected member and leaves other groups intact', () => {
+    act(() => {
+      useBoardStore.setState((state) => ({
+        boards: state.boards.map((b) => ({
+          ...b,
+          tiles: [
+            { id: 'a', chordId: 'C', col: 0, row: 0 },
+            { id: 'b', chordId: 'G', col: 1, row: 0 },
+            { id: 'c', chordId: 'Am', col: 5, row: 5 },
+          ],
+        })),
+      }));
+    });
+
+    act(() => useBoardStore.getState().removeGroup('a'));
+
+    const tiles = useBoardStore.getState().boards[0].tiles;
+    expect(tiles.map((t) => t.id)).toEqual(['c']);
+  });
+
+  it('removeGroup on an unknown tile id is a no-op', () => {
+    act(() => useBoardStore.getState().addTile('C', { col: 0, row: 0 }));
+    const before = useBoardStore.getState().boards[0].tiles;
+    act(() => useBoardStore.getState().removeGroup('missing'));
+    expect(useBoardStore.getState().boards[0].tiles).toEqual(before);
   });
 
   it('creates a new board and makes it active', () => {

@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { Cell, duplicatePlacements, nearestFreeCell } from '@/lib/grid';
+import { Cell, groupShape, nearestFreeAnchor } from '@/lib/grid';
 
 /** Fixed number of tile columns on the dashboard grid. */
 export const BOARD_COLS = 4;
@@ -23,16 +23,14 @@ export interface Board {
 interface BoardState {
   boards: Board[];
   activeBoardId: string;
-  /** Tile ids selected in multi-select mode (not persisted). */
-  selectedIds: string[];
 
   addTile: (chordId: string, target: Cell) => void;
-  moveTile: (tileId: string, target: Cell) => void;
-  removeTiles: (tileIds: readonly string[]) => void;
-  /** Duplicate all given tiles at once, each copy snapping next to its original. */
-  duplicateTiles: (tileIds: readonly string[]) => void;
-  toggleSelected: (tileId: string) => void;
-  clearSelection: () => void;
+  /** Move the whole magnet group containing `tileId`, keeping relative offsets. */
+  moveGroup: (tileId: string, target: Cell) => void;
+  /** Duplicate the whole magnet group containing `tileId` as one unit. */
+  duplicateGroup: (tileId: string) => void;
+  /** Remove every tile connected to `tileId`. */
+  removeGroup: (tileId: string) => void;
   createBoard: (name: string) => void;
   setActiveBoard: (boardId: string) => void;
 }
@@ -59,84 +57,82 @@ export const useBoardStore = create<BoardState>()(
     (set) => ({
       boards: [initialBoard],
       activeBoardId: initialBoard.id,
-      selectedIds: [],
 
       addTile: (chordId, target) =>
         set((state) => ({
           boards: updateActiveBoard(state, (board) => {
-            const cell = nearestFreeCell(board.tiles, target, BOARD_COLS);
+            const cell = nearestFreeAnchor(board.tiles, [{ col: 0, row: 0 }], target, BOARD_COLS);
             const tile: TileData = { id: newId('tile'), chordId, ...cell };
             return { ...board, tiles: [...board.tiles, tile] };
           }),
         })),
 
-      moveTile: (tileId, target) =>
+      moveGroup: (tileId, target) =>
         set((state) => ({
           boards: updateActiveBoard(state, (board) => {
-            const cell = nearestFreeCell(board.tiles, target, BOARD_COLS, new Set([tileId]));
+            const shape = groupShape(board.tiles, tileId);
+            if (!shape) return board;
+            const excludeIds = new Set(shape.keys());
+            const anchor = nearestFreeAnchor(
+              board.tiles,
+              [...shape.values()],
+              target,
+              BOARD_COLS,
+              excludeIds
+            );
             return {
               ...board,
-              tiles: board.tiles.map((tile) =>
-                tile.id === tileId ? { ...tile, ...cell } : tile
-              ),
+              tiles: board.tiles.map((tile) => {
+                const offset = shape.get(tile.id);
+                return offset ? { ...tile, col: anchor.col + offset.col, row: anchor.row + offset.row } : tile;
+              }),
             };
           }),
         })),
 
-      removeTiles: (tileIds) =>
-        set((state) => {
-          const remove = new Set(tileIds);
-          return {
-            boards: updateActiveBoard(state, (board) => ({
-              ...board,
-              tiles: board.tiles.filter((tile) => !remove.has(tile.id)),
-            })),
-            selectedIds: state.selectedIds.filter((id) => !remove.has(id)),
-          };
-        }),
-
-      duplicateTiles: (tileIds) =>
+      duplicateGroup: (tileId) =>
         set((state) => ({
           boards: updateActiveBoard(state, (board) => {
-            const placements = duplicatePlacements(board.tiles, tileIds, BOARD_COLS);
+            const shape = groupShape(board.tiles, tileId);
+            if (!shape) return board;
             const byId = new Map(board.tiles.map((tile) => [tile.id, tile]));
-            const copies: TileData[] = [];
-            for (const [originalId, cell] of placements) {
-              const original = byId.get(originalId);
-              if (!original) continue;
-              copies.push({ id: newId('tile'), chordId: original.chordId, ...cell });
-            }
+            const origin = byId.get(tileId)!;
+            const anchor = nearestFreeAnchor(board.tiles, [...shape.values()], origin, BOARD_COLS);
+            const copies: TileData[] = [...shape].map(([id, offset]) => ({
+              id: newId('tile'),
+              chordId: byId.get(id)!.chordId,
+              col: anchor.col + offset.col,
+              row: anchor.row + offset.row,
+            }));
             return { ...board, tiles: [...board.tiles, ...copies] };
           }),
         })),
 
-      toggleSelected: (tileId) =>
+      removeGroup: (tileId) =>
         set((state) => ({
-          selectedIds: state.selectedIds.includes(tileId)
-            ? state.selectedIds.filter((id) => id !== tileId)
-            : [...state.selectedIds, tileId],
+          boards: updateActiveBoard(state, (board) => {
+            const shape = groupShape(board.tiles, tileId);
+            if (!shape) return board;
+            const ids = new Set(shape.keys());
+            return { ...board, tiles: board.tiles.filter((tile) => !ids.has(tile.id)) };
+          }),
         })),
-
-      clearSelection: () => set({ selectedIds: [] }),
 
       createBoard: (name) =>
         set((state) => {
           const board: Board = { id: newId('board'), name, tiles: [] };
-          return { boards: [...state.boards, board], activeBoardId: board.id, selectedIds: [] };
+          return { boards: [...state.boards, board], activeBoardId: board.id };
         }),
 
       setActiveBoard: (boardId) =>
         set((state) =>
-          state.boards.some((board) => board.id === boardId)
-            ? { activeBoardId: boardId, selectedIds: [] }
-            : state
+          state.boards.some((board) => board.id === boardId) ? { activeBoardId: boardId } : state
         ),
     }),
     {
       name: 'uketile-boards',
       version: 1,
       storage: createJSONStorage(() => AsyncStorage),
-      // Selection is transient UI state; only boards survive restarts.
       partialize: (state) => ({ boards: state.boards, activeBoardId: state.activeBoardId }),
     }
   )

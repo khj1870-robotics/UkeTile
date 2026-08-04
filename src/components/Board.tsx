@@ -3,35 +3,42 @@ import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedScrollHandler } from 'react-native-reanimated';
 
 import { BoardMetricsHandle } from '@/hooks/useBoardMetrics';
-import { GhostControlsHandle } from '@/hooks/useGhostControls';
+import { GhostControlsHandle, GhostTileSpec } from '@/hooks/useGhostControls';
 import { DraggableTile } from '@/components/DraggableTile';
-import { rowCount } from '@/lib/grid';
+import { groupShape, rowCount } from '@/lib/grid';
 import { TileData } from '@/state/boardStore';
 import { colors, spacing } from '@/theme';
 
 interface Props {
   tiles: TileData[];
   cellSize: number;
-  selectionMode: boolean;
-  selectedIds: string[];
   board: BoardMetricsHandle;
   ghost: GhostControlsHandle;
   onTapTile: (tileId: string) => void;
   onDropTile: (tileId: string, col: number, row: number) => void;
+  onLongPressMenu: (tileId: string, x: number, y: number) => void;
 }
 
 const MIN_VISIBLE_ROWS = 5;
 
-export function Board({
-  tiles,
-  cellSize,
-  selectionMode,
-  selectedIds,
-  board,
-  ghost,
-  onTapTile,
-  onDropTile,
-}: Props) {
+/** The drag-ghost shape for the whole magnet group `tileId` belongs to. */
+function ghostShapeFor(tiles: TileData[], tileId: string, cellSize: number) {
+  const shape = groupShape(tiles, tileId);
+  const byId = new Map(tiles.map((tile) => [tile.id, tile]));
+  if (!shape) {
+    const tile = byId.get(tileId);
+    const specs: GhostTileSpec[] = tile ? [{ chordId: tile.chordId, dCol: 0, dRow: 0 }] : [];
+    return { tiles: specs, cellSize };
+  }
+  const specs: GhostTileSpec[] = [...shape].map(([id, offset]) => ({
+    chordId: byId.get(id)!.chordId,
+    dCol: offset.col,
+    dRow: offset.row,
+  }));
+  return { tiles: specs, cellSize };
+}
+
+export function Board({ tiles, cellSize, board, ghost, onTapTile, onDropTile, onLongPressMenu }: Props) {
   const rows = rowCount(tiles, MIN_VISIBLE_ROWS);
 
   const scrollHandler = useAnimatedScrollHandler((event) => {
@@ -57,12 +64,12 @@ export function Board({
               <DraggableTile
                 chordId={tile.chordId}
                 size={cellSize - spacing.xs * 2}
-                selected={selectedIds.includes(tile.id)}
-                disabled={selectionMode}
                 board={board}
                 ghost={ghost}
+                getGroupShape={() => ghostShapeFor(tiles, tile.id, cellSize)}
                 onTap={() => onTapTile(tile.id)}
                 onDrop={(col, row) => onDropTile(tile.id, col, row)}
+                onLongPressMenu={(x, y) => onLongPressMenu(tile.id, x, y)}
               />
             </View>
           ))}
