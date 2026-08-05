@@ -25,8 +25,8 @@ interface BoardState {
   activeBoardId: string;
 
   addTile: (chordId: string, target: Cell) => void;
-  /** Move the whole magnet group containing `tileId`, keeping relative offsets. */
-  moveGroup: (tileId: string, target: Cell) => void;
+  /** Move a single tile, independent of any tiles it's adjacent to. */
+  moveTile: (tileId: string, target: Cell) => void;
   /** Duplicate the whole magnet group containing `tileId` as one unit. */
   duplicateGroup: (tileId: string) => void;
   /** Remove every tile connected to `tileId`. */
@@ -67,25 +67,14 @@ export const useBoardStore = create<BoardState>()(
           }),
         })),
 
-      moveGroup: (tileId, target) =>
+      moveTile: (tileId, target) =>
         set((state) => ({
           boards: updateActiveBoard(state, (board) => {
-            const shape = groupShape(board.tiles, tileId);
-            if (!shape) return board;
-            const excludeIds = new Set(shape.keys());
-            const anchor = nearestFreeAnchor(
-              board.tiles,
-              [...shape.values()],
-              target,
-              BOARD_COLS,
-              excludeIds
-            );
+            if (!board.tiles.some((tile) => tile.id === tileId)) return board;
+            const cell = nearestFreeAnchor(board.tiles, [{ col: 0, row: 0 }], target, BOARD_COLS, new Set([tileId]));
             return {
               ...board,
-              tiles: board.tiles.map((tile) => {
-                const offset = shape.get(tile.id);
-                return offset ? { ...tile, col: anchor.col + offset.col, row: anchor.row + offset.row } : tile;
-              }),
+              tiles: board.tiles.map((tile) => (tile.id === tileId ? { ...tile, ...cell } : tile)),
             };
           }),
         })),

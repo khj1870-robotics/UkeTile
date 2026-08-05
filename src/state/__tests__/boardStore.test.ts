@@ -31,15 +31,15 @@ describe('boardStore', () => {
     expect(tiles[0]).not.toEqual(tiles[1]);
   });
 
-  it('moveGroup moves an isolated tile like the old single-tile move', () => {
+  it('moveTile moves a single tile to the requested cell', () => {
     act(() => useBoardStore.getState().addTile('C', { col: 0, row: 0 }));
     const tileId = useBoardStore.getState().boards[0].tiles[0].id;
-    act(() => useBoardStore.getState().moveGroup(tileId, { col: 2, row: 2 }));
+    act(() => useBoardStore.getState().moveTile(tileId, { col: 2, row: 2 }));
     const tile = useBoardStore.getState().boards[0].tiles[0];
     expect(tile).toMatchObject({ col: 2, row: 2 });
   });
 
-  it('moveGroup moves a connected pair together, preserving relative offset, without touching an unrelated tile', () => {
+  it('moveTile moves only the given tile, leaving adjacent tiles untouched', () => {
     act(() => {
       useBoardStore.setState((state) => ({
         boards: state.boards.map((b) => ({
@@ -53,40 +53,40 @@ describe('boardStore', () => {
       }));
     });
 
-    act(() => useBoardStore.getState().moveGroup('a', { col: 2, row: 2 }));
+    act(() => useBoardStore.getState().moveTile('a', { col: 2, row: 2 }));
 
     const tiles = useBoardStore.getState().boards[0].tiles;
     const byId = new Map(tiles.map((t) => [t.id, t]));
     expect(byId.get('a')).toMatchObject({ col: 2, row: 2 });
-    expect(byId.get('b')).toMatchObject({ col: 3, row: 2 });
+    expect(byId.get('b')).toMatchObject({ col: 1, row: 0 });
     expect(byId.get('c')).toMatchObject({ col: 3, row: 3 });
   });
 
-  it('moveGroup dragging a non-reference member moves the whole group relative to it', () => {
+  it('moveTile snaps to the nearest free cell if the target is occupied', () => {
     act(() => {
       useBoardStore.setState((state) => ({
         boards: state.boards.map((b) => ({
           ...b,
           tiles: [
             { id: 'a', chordId: 'C', col: 0, row: 0 },
-            { id: 'b', chordId: 'G', col: 1, row: 0 },
+            { id: 'b', chordId: 'G', col: 2, row: 2 },
           ],
         })),
       }));
     });
 
-    act(() => useBoardStore.getState().moveGroup('b', { col: 2, row: 5 }));
+    act(() => useBoardStore.getState().moveTile('a', { col: 2, row: 2 }));
 
     const tiles = useBoardStore.getState().boards[0].tiles;
     const byId = new Map(tiles.map((t) => [t.id, t]));
-    expect(byId.get('b')).toMatchObject({ col: 2, row: 5 });
-    expect(byId.get('a')).toMatchObject({ col: 1, row: 5 });
+    expect(byId.get('a')).not.toMatchObject({ col: 2, row: 2 });
+    expect(byId.get('b')).toMatchObject({ col: 2, row: 2 });
   });
 
-  it('moveGroup on an unknown tile id is a no-op', () => {
+  it('moveTile on an unknown tile id is a no-op', () => {
     act(() => useBoardStore.getState().addTile('C', { col: 0, row: 0 }));
     const before = useBoardStore.getState().boards[0].tiles;
-    act(() => useBoardStore.getState().moveGroup('missing', { col: 2, row: 2 }));
+    act(() => useBoardStore.getState().moveTile('missing', { col: 2, row: 2 }));
     expect(useBoardStore.getState().boards[0].tiles).toEqual(before);
   });
 

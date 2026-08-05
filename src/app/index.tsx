@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Armed, Board } from '@/components/Board';
+import { Board } from '@/components/Board';
 import { Palette } from '@/components/Palette';
 import { TileContextMenu } from '@/components/TileContextMenu';
 import { getChord } from '@/data/chords';
@@ -10,19 +11,20 @@ import { useActiveBoard, useBoardStore } from '@/state/boardStore';
 import { colors, spacing } from '@/theme';
 
 export default function DashboardScreen() {
-  const [armed, setArmed] = useState<Armed | null>(null);
+  /** The chord currently armed for placement from the palette, if any. */
+  const [armedChordId, setArmedChordId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ tileId: string; x: number; y: number } | null>(null);
 
   const activeBoard = useActiveBoard();
   const addTile = useBoardStore((s) => s.addTile);
-  const moveGroup = useBoardStore((s) => s.moveGroup);
+  const moveTile = useBoardStore((s) => s.moveTile);
   const duplicateGroup = useBoardStore((s) => s.duplicateGroup);
   const removeGroup = useBoardStore((s) => s.removeGroup);
 
   const handlePaletteTap = (chordId: string) => {
     const chord = getChord(chordId);
     if (chord) playChord(chord);
-    setArmed((prev) => (prev?.kind === 'chord' && prev.id === chordId ? null : { kind: 'chord', id: chordId }));
+    setArmedChordId((prev) => (prev === chordId ? null : chordId));
   };
 
   const handleTileTap = (tileId: string) => {
@@ -32,23 +34,19 @@ export default function DashboardScreen() {
   };
 
   const handleSlotPress = (col: number, row: number) => {
-    if (!armed) return;
-    if (armed.kind === 'chord') {
-      addTile(armed.id, { col, row });
-    } else {
-      moveGroup(armed.id, { col, row });
-    }
-    setArmed(null);
+    if (!armedChordId) return;
+    addTile(armedChordId, { col, row });
+    setArmedChordId(null);
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <Text style={styles.title}>UkeTile</Text>
-        {armed ? (
+        {armedChordId ? (
           <View style={styles.armedRow}>
             <Text style={styles.armedText}>빈 칸을 탭해 배치하세요</Text>
-            <Pressable onPress={() => setArmed(null)}>
+            <Pressable onPress={() => setArmedChordId(null)}>
               <Text style={styles.cancelText}>취소</Text>
             </Pressable>
           </View>
@@ -59,22 +57,19 @@ export default function DashboardScreen() {
 
       <Board
         tiles={activeBoard.tiles}
-        armed={armed}
+        armedChordId={armedChordId}
         onTapTile={handleTileTap}
         onLongPressMenu={(tileId, x, y) => setContextMenu({ tileId, x, y })}
+        onMoveTile={(tileId, target) => moveTile(tileId, target)}
         onSlotPress={handleSlotPress}
       />
 
-      <Palette armedChordId={armed?.kind === 'chord' ? armed.id : null} onTap={handlePaletteTap} />
+      <Palette armedChordId={armedChordId} onTap={handlePaletteTap} />
 
       {contextMenu && (
         <TileContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          onMove={() => {
-            setArmed({ kind: 'tile', id: contextMenu.tileId });
-            setContextMenu(null);
-          }}
           onDuplicate={() => {
             duplicateGroup(contextMenu.tileId);
             setContextMenu(null);

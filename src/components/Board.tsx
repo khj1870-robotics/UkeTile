@@ -3,20 +3,17 @@ import { LayoutChangeEvent, ScrollView, StyleSheet, View } from 'react-native';
 
 import { BoardTile } from '@/components/BoardTile';
 import { EmptySlot } from '@/components/EmptySlot';
-import { cellKey, rowCount } from '@/lib/grid';
+import { Cell, cellKey, rowCount } from '@/lib/grid';
 import { BOARD_COLS, TileData } from '@/state/boardStore';
 import { colors, spacing } from '@/theme';
 
-export interface Armed {
-  kind: 'chord' | 'tile';
-  id: string;
-}
-
 interface Props {
   tiles: TileData[];
-  armed: Armed | null;
+  /** The chord (if any) currently armed for placement from the palette. */
+  armedChordId: string | null;
   onTapTile: (tileId: string) => void;
   onLongPressMenu: (tileId: string, x: number, y: number) => void;
+  onMoveTile: (tileId: string, target: Cell) => void;
   onSlotPress: (col: number, row: number) => void;
 }
 
@@ -24,11 +21,11 @@ const MIN_VISIBLE_ROWS = 5;
 
 /**
  * A fixed grid of visible slots — filled ones show a tile, empty ones show a
- * dashed placeholder you can tap to place/move a tile into. Plain flexbox
- * wrapping (no absolute-position pixel math) lays out the grid, so there's no
- * window-coordinate measurement anywhere in placement.
+ * dashed placeholder you can tap to place a tile into. Plain flexbox
+ * wrapping (no absolute-position pixel math) lays out the grid, packed from
+ * the top-left so it never centers/stretches to fill extra vertical space.
  */
-export function Board({ tiles, armed, onTapTile, onLongPressMenu, onSlotPress }: Props) {
+export function Board({ tiles, armedChordId, onTapTile, onLongPressMenu, onMoveTile, onSlotPress }: Props) {
   const [boardWidth, setBoardWidth] = useState(0);
   const cellSize = boardWidth > 0 ? boardWidth / BOARD_COLS : 0;
 
@@ -51,11 +48,15 @@ export function Board({ tiles, armed, onTapTile, onLongPressMenu, onSlotPress }:
                     <BoardTile
                       chordId={tile.chordId}
                       size={inner}
+                      cellSize={cellSize}
+                      col={col}
+                      row={row}
                       onTap={() => onTapTile(tile.id)}
                       onLongPressMenu={(x, y) => onLongPressMenu(tile.id, x, y)}
+                      onMove={(target) => onMoveTile(tile.id, target)}
                     />
                   ) : (
-                    <EmptySlot size={inner} active={!!armed} onPress={() => onSlotPress(col, row)} />
+                    <EmptySlot size={inner} active={!!armedChordId} onPress={() => onSlotPress(col, row)} />
                   )}
                 </View>
               );
@@ -69,5 +70,5 @@ export function Board({ tiles, armed, onTapTile, onLongPressMenu, onSlotPress }:
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', alignContent: 'flex-start' },
 });
