@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Board } from '@/components/Board';
@@ -8,6 +8,7 @@ import { TileContextMenu } from '@/components/TileContextMenu';
 import { getChord } from '@/data/chords';
 import { playChord } from '@/lib/player';
 import { useActiveBoard, useBoardStore } from '@/state/boardStore';
+import { useSettingsStore } from '@/state/settingsStore';
 import { colors, spacing } from '@/theme';
 
 export default function DashboardScreen() {
@@ -20,6 +21,8 @@ export default function DashboardScreen() {
   const moveTile = useBoardStore((s) => s.moveTile);
   const duplicateGroup = useBoardStore((s) => s.duplicateGroup);
   const removeGroup = useBoardStore((s) => s.removeGroup);
+  const leftHanded = useSettingsStore((s) => s.leftHanded);
+  const toggleLeftHanded = useSettingsStore((s) => s.toggleLeftHanded);
 
   const handlePaletteTap = (chordId: string) => {
     const chord = getChord(chordId);
@@ -39,10 +42,33 @@ export default function DashboardScreen() {
     setArmedChordId(null);
   };
 
+  // Android hardware/gesture back: dismiss whatever's in-progress on screen
+  // instead of exiting the app. Only intercepts when there's actually
+  // something to dismiss — otherwise falls through to the default behavior.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (contextMenu) {
+        setContextMenu(null);
+        return true;
+      }
+      if (armedChordId) {
+        setArmedChordId(null);
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [contextMenu, armedChordId]);
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Text style={styles.title}>UkeTile</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>UkeTile</Text>
+          <Pressable onPress={toggleLeftHanded} style={styles.handToggle}>
+            <Text style={styles.handToggleText}>{leftHanded ? '왼손잡이' : '오른손잡이'}</Text>
+          </Pressable>
+        </View>
         {armedChordId ? (
           <View style={styles.armedRow}>
             <Text style={styles.armedText}>빈 칸을 탭해 배치하세요</Text>
@@ -92,8 +118,20 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   title: { color: colors.text, fontSize: 22, fontWeight: '800' },
   subtitle: { color: colors.textDim, fontSize: 13, marginTop: 2 },
+  handToggle: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceRaised,
+  },
+  handToggleText: { color: colors.textDim, fontSize: 12, fontWeight: '700' },
   armedRow: {
     flexDirection: 'row',
     alignItems: 'center',

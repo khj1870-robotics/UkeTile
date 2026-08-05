@@ -46,9 +46,11 @@ export function BoardTile({ chordId, size, cellSize, col, row, onTap, onLongPres
 
   // Requires a brief hold before activating so it plays nicely inside the
   // board's scroll view (a quick scroll swipe never holds still long enough
-  // to trigger it).
+  // to trigger it). Kept as short as possible for a near-instant drag feel
+  // while still leaving enough of a gate that a fast scroll flick doesn't
+  // get misread as a tile grab.
   const pan = Gesture.Pan()
-    .activateAfterLongPress(120)
+    .activateAfterLongPress(60)
     .onStart(() => {
       dragging.value = 1;
     })

@@ -18,4 +18,10 @@ describe('ChordDiagram', () => {
       unmount();
     }
   });
+
+  it('renders a mirrored (left-handed) diagram without crashing', () => {
+    const chord = getChord('C-maj')!;
+    const { getByTestId } = render(<ChordDiagram chord={chord} width={60} mirrored />);
+    expect(getByTestId('chord-diagram-C-maj')).toBeTruthy();
+  });
 });

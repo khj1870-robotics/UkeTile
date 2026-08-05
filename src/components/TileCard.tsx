@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { ChordDiagram } from '@/components/ChordDiagram';
 import { Chord } from '@/data/chords';
+import { useSettingsStore } from '@/state/settingsStore';
 import { colors } from '@/theme';
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
 
 /** The visual card for a chord tile — used on the board, in the palette and as the drag ghost. */
 export function TileCard({ chord, size, selected = false }: Props) {
+  const leftHanded = useSettingsStore((s) => s.leftHanded);
   return (
     <View
       style={[
@@ -25,7 +27,7 @@ export function TileCard({ chord, size, selected = false }: Props) {
       <Text style={styles.name} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
         {chord.name}
       </Text>
-      <ChordDiagram chord={chord} width={size * 0.82} />
+      <ChordDiagram chord={chord} width={size * 0.82} mirrored={leftHanded} />
     </View>
   );
 }

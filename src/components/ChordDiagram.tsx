@@ -1,5 +1,5 @@
 import React from 'react';
-import Svg, { Circle, Line, Rect } from 'react-native-svg';
+import Svg, { Circle, G, Line, Rect } from 'react-native-svg';
 
 import { Chord } from '@/data/chords';
 import { colors } from '@/theme';
@@ -8,16 +8,21 @@ interface Props {
   chord: Chord;
   /** Rendered width in px; height follows a horizontal (wider-than-tall) ratio. */
   width: number;
+  /** Left-handed mode: mirrors the whole diagram horizontally (nut on the right). */
+  mirrored?: boolean;
 }
 
 const FRET_COLS = 4;
 
 /**
- * A horizontal ukulele chord chart: 4 strings (G C E A top to bottom), nut on
- * the left, frets running rightward, finger dots on fretted strings, open
- * circles to the left of open strings.
+ * A horizontal ukulele chord chart: nut on the left, frets running rightward.
+ * Strings run A (top) to G (bottom) — the correct 90°-counterclockwise
+ * rotation of a standard nut-on-top chart (where strings read G-C-E-A
+ * left-to-right). An earlier version kept G-C-E-A top-to-bottom after
+ * rotating, which isn't a true rotation of the original chart — it read
+ * mirrored/backwards.
  */
-export function ChordDiagram({ chord, width }: Props) {
+export function ChordDiagram({ chord, width, mirrored = false }: Props) {
   const height = width * 0.58;
   const paddingLeft = width * 0.16;
   const paddingRight = width * 0.06;
@@ -29,10 +34,11 @@ export function ChordDiagram({ chord, width }: Props) {
   const fretGap = gridWidth / FRET_COLS;
   const dotRadius = Math.min(stringGap, fretGap) * 0.32;
 
-  const stringY = (string: number) => paddingV + string * stringGap;
+  // string 0=G .. 3=A in the data; displayed top-to-bottom as A,E,C,G.
+  const stringY = (string: number) => paddingV + (3 - string) * stringGap;
 
-  return (
-    <Svg width={width} height={height} testID={`chord-diagram-${chord.id}`}>
+  const content = (
+    <>
       {/* Nut */}
       <Rect
         x={paddingLeft - 3}
@@ -88,6 +94,12 @@ export function ChordDiagram({ chord, width }: Props) {
           />
         )
       )}
+    </>
+  );
+
+  return (
+    <Svg width={width} height={height} testID={`chord-diagram-${chord.id}`}>
+      {mirrored ? <G transform={`translate(${width}, 0) scale(-1, 1)`}>{content}</G> : content}
     </Svg>
   );
 }
