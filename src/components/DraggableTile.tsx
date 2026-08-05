@@ -1,4 +1,5 @@
 import React from 'react';
+import { View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
@@ -8,12 +9,12 @@ import { GhostTileSpec } from '@/hooks/useGhostControls';
 import { BOARD_COLS } from '@/state/boardStore';
 import { pointToCell } from '@/lib/grid';
 
-/** Window-space board container geometry + scroll offset, read by drag worklets. */
+/**
+ * Board container ref (measured fresh at drop time, not cached) + vertical
+ * scroll offset, read by drag worklets/callbacks.
+ */
 export interface BoardMetrics {
-  x: SharedValue<number>;
-  y: SharedValue<number>;
-  width: SharedValue<number>;
-  height: SharedValue<number>;
+  ref: React.RefObject<View | null>;
   scrollY: SharedValue<number>;
 }
 
@@ -70,10 +71,22 @@ export function DraggableTile({
   const chord = getChord(chordId);
   const hiddenWhileDragging = useSharedValue(0);
 
-  const resolveDrop = (relX: number, relY: number, boardWidth: number) => {
-    const cellSize = boardWidth / BOARD_COLS;
-    const cell = pointToCell(relX, relY, cellSize, BOARD_COLS);
-    onDrop(cell.col, cell.row);
+  // Measured fresh at the moment of drop rather than reading a value cached
+  // at mount — a cached window-position from the first layout pass can be
+  // wrong (a known Android quirk) and, since nothing else depended on it,
+  // would silently make every drop miss forever with no visible symptom
+  // other than "it never lands."
+  const resolveDrop = (absoluteX: number, absoluteY: number, scrollY: number) => {
+    board.ref.current?.measureInWindow((bx, by, bw, bh) => {
+      const withinX = absoluteX >= bx && absoluteX <= bx + bw;
+      const withinY = absoluteY >= by && absoluteY <= by + bh;
+      if (!withinX || !withinY) return;
+      const relX = absoluteX - bx;
+      const relY = absoluteY - by + scrollY;
+      const cellSize = bw / BOARD_COLS;
+      const cell = pointToCell(relX, relY, cellSize, BOARD_COLS);
+      onDrop(cell.col, cell.row);
+    });
   };
 
   const startGhost = () => {
@@ -101,13 +114,7 @@ export function DraggableTile({
       ghost.y.value = e.absoluteY - size / 2;
     })
     .onEnd((e) => {
-      const withinX = e.absoluteX >= board.x.value && e.absoluteX <= board.x.value + board.width.value;
-      const withinY = e.absoluteY >= board.y.value && e.absoluteY <= board.y.value + board.height.value;
-      if (withinX && withinY) {
-        const relX = e.absoluteX - board.x.value;
-        const relY = e.absoluteY - board.y.value + board.scrollY.value;
-        runOnJS(resolveDrop)(relX, relY, board.width.value);
-      }
+      runOnJS(resolveDrop)(e.absoluteX, e.absoluteY, board.scrollY.value);
     })
     .onFinalize(() => {
       hiddenWhileDragging.value = 0;
