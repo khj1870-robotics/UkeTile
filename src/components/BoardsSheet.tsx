@@ -1,25 +1,41 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Board } from '@/state/boardStore';
+import { BoardEntry, TIME_SIGNATURE_PRESETS, TimeSignature } from '@/state/boardStore';
 import { colors, spacing } from '@/theme';
 
 interface Props {
-  boards: Board[];
+  boards: BoardEntry[];
   activeBoardId: string;
   onSelect: (boardId: string) => void;
   onRename: (boardId: string, name: string) => void;
   onDelete: (boardId: string) => void;
-  onCreate: () => void;
+  onCreateGrid: () => void;
+  onCreateSheet: (timeSignature: TimeSignature) => void;
   onDismiss: () => void;
 }
 
+function boardSubtitle(board: BoardEntry): string {
+  if (board.type === 'grid') return `${board.tiles.length}개 타일`;
+  return `악보 · ${board.timeSignature.beats}/${board.timeSignature.unit} · ${board.lines.length}줄`;
+}
+
 /** Full-screen overlay for managing saved boards: switch, rename, delete, create. */
-export function BoardsSheet({ boards, activeBoardId, onSelect, onRename, onDelete, onCreate, onDismiss }: Props) {
+export function BoardsSheet({
+  boards,
+  activeBoardId,
+  onSelect,
+  onRename,
+  onDelete,
+  onCreateGrid,
+  onCreateSheet,
+  onDismiss,
+}: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
+  const [pickingTimeSignature, setPickingTimeSignature] = useState(false);
 
-  const startEditing = (board: Board) => {
+  const startEditing = (board: BoardEntry) => {
     setEditingId(board.id);
     setDraftName(board.name);
   };
@@ -57,7 +73,7 @@ export function BoardsSheet({ boards, activeBoardId, onSelect, onRename, onDelet
                   {board.id === activeBoardId ? '● ' : ''}
                   {board.name}
                 </Text>
-                <Text style={styles.count}>{board.tiles.length}개 타일</Text>
+                <Text style={styles.count}>{boardSubtitle(board)}</Text>
               </Pressable>
             )}
             <Pressable style={styles.iconButton} onPress={() => startEditing(board)}>
@@ -70,9 +86,37 @@ export function BoardsSheet({ boards, activeBoardId, onSelect, onRename, onDelet
             )}
           </View>
         ))}
-        <Pressable style={styles.createButton} onPress={onCreate}>
-          <Text style={styles.createButtonText}>+ 새 보드</Text>
-        </Pressable>
+
+        {pickingTimeSignature ? (
+          <View style={styles.timeSigRow}>
+            {TIME_SIGNATURE_PRESETS.map((sig) => (
+              <Pressable
+                key={`${sig.beats}-${sig.unit}`}
+                style={styles.timeSigChip}
+                onPress={() => {
+                  onCreateSheet(sig);
+                  setPickingTimeSignature(false);
+                }}
+              >
+                <Text style={styles.timeSigChipText}>
+                  {sig.beats}/{sig.unit}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.createRow}>
+            <Pressable style={[styles.createButton, styles.createButtonHalf]} onPress={onCreateGrid}>
+              <Text style={styles.createButtonText}>+ 자유배치 보드</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.createButton, styles.createButtonHalf]}
+              onPress={() => setPickingTimeSignature(true)}
+            >
+              <Text style={styles.createButtonText}>+ 악보 보드</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -132,12 +176,30 @@ const styles = StyleSheet.create({
   },
   iconText: { color: colors.textDim, fontSize: 12, fontWeight: '700' },
   dangerText: { color: colors.danger },
-  createButton: {
+  createRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
     marginTop: spacing.sm,
+  },
+  createButton: {
     paddingVertical: spacing.sm,
     borderRadius: 10,
     backgroundColor: colors.accent,
     alignItems: 'center',
   },
-  createButtonText: { color: colors.accentText, fontWeight: '800' },
+  createButtonHalf: { flex: 1 },
+  createButtonText: { color: colors.accentText, fontWeight: '800', fontSize: 12 },
+  timeSigRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  timeSigChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 10,
+    backgroundColor: colors.accent,
+  },
+  timeSigChipText: { color: colors.accentText, fontWeight: '800' },
 });

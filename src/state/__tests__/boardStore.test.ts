@@ -4,9 +4,16 @@ import { useBoardStore } from '@/state/boardStore';
 
 function resetStore() {
   useBoardStore.setState({
-    boards: [{ id: 'board-1', name: '보드 1', tiles: [] }],
+    boards: [{ id: 'board-1', name: '보드 1', type: 'grid', tiles: [] }],
     activeBoardId: 'board-1',
   });
+}
+
+/** Reads the active board's tiles, asserting it's a grid board (all tests here use one). */
+function gridTiles() {
+  const board = useBoardStore.getState().boards[0];
+  if (board.type !== 'grid') throw new Error('expected a grid board');
+  return board.tiles;
 }
 
 beforeEach(() => {
@@ -16,9 +23,9 @@ beforeEach(() => {
 describe('boardStore', () => {
   it('adds a tile to the active board at the requested cell', () => {
     act(() => useBoardStore.getState().addTile('C', { col: 1, row: 0 }));
-    const board = useBoardStore.getState().boards[0];
-    expect(board.tiles).toHaveLength(1);
-    expect(board.tiles[0]).toMatchObject({ chordId: 'C', col: 1, row: 0 });
+    const tiles = gridTiles();
+    expect(tiles).toHaveLength(1);
+    expect(tiles[0]).toMatchObject({ chordId: 'C', col: 1, row: 0 });
   });
 
   it('snaps a new tile to the nearest free cell if the target is occupied', () => {
@@ -26,14 +33,14 @@ describe('boardStore', () => {
       useBoardStore.getState().addTile('C', { col: 0, row: 0 });
       useBoardStore.getState().addTile('G', { col: 0, row: 0 });
     });
-    const tiles = useBoardStore.getState().boards[0].tiles;
+    const tiles = gridTiles();
     expect(tiles).toHaveLength(2);
     expect(tiles[0]).not.toEqual(tiles[1]);
   });
 
   it('addTiles lines up several chords in a row starting at the target', () => {
     act(() => useBoardStore.getState().addTiles(['C', 'G', 'Am'], { col: 0, row: 0 }));
-    const tiles = useBoardStore.getState().boards[0].tiles;
+    const tiles = gridTiles();
     expect(tiles).toHaveLength(3);
     const byChord = new Map(tiles.map((t) => [t.chordId, t]));
     expect(byChord.get('C')).toMatchObject({ col: 0, row: 0 });
@@ -46,7 +53,7 @@ describe('boardStore', () => {
       useBoardStore.getState().addTile('C', { col: 1, row: 0 });
       useBoardStore.getState().addTiles(['G', 'Am'], { col: 0, row: 0 });
     });
-    const tiles = useBoardStore.getState().boards[0].tiles;
+    const tiles = gridTiles();
     const byChord = new Map(tiles.map((t) => [t.chordId, t]));
     expect(byChord.get('G')).toMatchObject({ col: 0, row: 0 });
     expect(byChord.get('Am')).toMatchObject({ col: 2, row: 0 });
@@ -67,7 +74,7 @@ describe('boardStore', () => {
 
     act(() => useBoardStore.getState().duplicateTile('a'));
 
-    const tiles = useBoardStore.getState().boards[0].tiles;
+    const tiles = gridTiles();
     expect(tiles).toHaveLength(3);
     const copy = tiles.find((t) => !['a', 'b'].includes(t.id))!;
     expect(copy).toMatchObject({ chordId: 'C', col: 1, row: 0 });
@@ -90,7 +97,7 @@ describe('boardStore', () => {
 
     act(() => useBoardStore.getState().duplicateTile('a'));
 
-    const tiles = useBoardStore.getState().boards[0].tiles;
+    const tiles = gridTiles();
     const copy = tiles.find((t) => !['a', 'b'].includes(t.id))!;
     expect(copy).toMatchObject({ chordId: 'C', col: 2, row: 0 });
   });
@@ -111,7 +118,7 @@ describe('boardStore', () => {
 
     act(() => useBoardStore.getState().removeTiles(['a']));
 
-    const tiles = useBoardStore.getState().boards[0].tiles;
+    const tiles = gridTiles();
     expect(tiles.map((t) => t.id).sort()).toEqual(['b', 'c']);
   });
 
@@ -121,14 +128,14 @@ describe('boardStore', () => {
       useBoardStore.getState().addTile('G', { col: 1, row: 0 });
     });
     act(() => useBoardStore.getState().clearBoard());
-    expect(useBoardStore.getState().boards[0].tiles).toEqual([]);
+    expect(gridTiles()).toEqual([]);
   });
 
   it('moveTile moves a single tile to the requested cell', () => {
     act(() => useBoardStore.getState().addTile('C', { col: 0, row: 0 }));
-    const tileId = useBoardStore.getState().boards[0].tiles[0].id;
+    const tileId = gridTiles()[0].id;
     act(() => useBoardStore.getState().moveTile(tileId, { col: 2, row: 2 }));
-    const tile = useBoardStore.getState().boards[0].tiles[0];
+    const tile = gridTiles()[0];
     expect(tile).toMatchObject({ col: 2, row: 2 });
   });
 
@@ -148,7 +155,7 @@ describe('boardStore', () => {
 
     act(() => useBoardStore.getState().moveTile('a', { col: 2, row: 2 }));
 
-    const tiles = useBoardStore.getState().boards[0].tiles;
+    const tiles = gridTiles();
     const byId = new Map(tiles.map((t) => [t.id, t]));
     expect(byId.get('a')).toMatchObject({ col: 2, row: 2 });
     expect(byId.get('b')).toMatchObject({ col: 1, row: 0 });
@@ -170,7 +177,7 @@ describe('boardStore', () => {
 
     act(() => useBoardStore.getState().moveTile('a', { col: 2, row: 2 }));
 
-    const tiles = useBoardStore.getState().boards[0].tiles;
+    const tiles = gridTiles();
     const byId = new Map(tiles.map((t) => [t.id, t]));
     expect(byId.get('a')).not.toMatchObject({ col: 2, row: 2 });
     expect(byId.get('b')).toMatchObject({ col: 2, row: 2 });
@@ -178,9 +185,9 @@ describe('boardStore', () => {
 
   it('moveTile on an unknown tile id is a no-op', () => {
     act(() => useBoardStore.getState().addTile('C', { col: 0, row: 0 }));
-    const before = useBoardStore.getState().boards[0].tiles;
+    const before = gridTiles();
     act(() => useBoardStore.getState().moveTile('missing', { col: 2, row: 2 }));
-    expect(useBoardStore.getState().boards[0].tiles).toEqual(before);
+    expect(gridTiles()).toEqual(before);
   });
 
   it('duplicateGroup duplicates a connected L-shape as one unit with no overlaps', () => {
@@ -199,7 +206,7 @@ describe('boardStore', () => {
 
     act(() => useBoardStore.getState().duplicateGroup('a'));
 
-    const tiles = useBoardStore.getState().boards[0].tiles;
+    const tiles = gridTiles();
     expect(tiles).toHaveLength(6);
     const keys = tiles.map((t) => `${t.col},${t.row}`);
     expect(new Set(keys).size).toBe(6);
@@ -225,9 +232,9 @@ describe('boardStore', () => {
 
   it('duplicateGroup on an unknown tile id is a no-op', () => {
     act(() => useBoardStore.getState().addTile('C', { col: 0, row: 0 }));
-    const before = useBoardStore.getState().boards[0].tiles;
+    const before = gridTiles();
     act(() => useBoardStore.getState().duplicateGroup('missing'));
-    expect(useBoardStore.getState().boards[0].tiles).toEqual(before);
+    expect(gridTiles()).toEqual(before);
   });
 
   it('removeGroup removes every connected member and leaves other groups intact', () => {
@@ -246,19 +253,19 @@ describe('boardStore', () => {
 
     act(() => useBoardStore.getState().removeGroup('a'));
 
-    const tiles = useBoardStore.getState().boards[0].tiles;
+    const tiles = gridTiles();
     expect(tiles.map((t) => t.id)).toEqual(['c']);
   });
 
   it('removeGroup on an unknown tile id is a no-op', () => {
     act(() => useBoardStore.getState().addTile('C', { col: 0, row: 0 }));
-    const before = useBoardStore.getState().boards[0].tiles;
+    const before = gridTiles();
     act(() => useBoardStore.getState().removeGroup('missing'));
-    expect(useBoardStore.getState().boards[0].tiles).toEqual(before);
+    expect(gridTiles()).toEqual(before);
   });
 
   it('creates a new board and makes it active', () => {
-    act(() => useBoardStore.getState().createBoard('새 보드'));
+    act(() => useBoardStore.getState().createBoard('새 보드', 'grid'));
     const state = useBoardStore.getState();
     expect(state.boards).toHaveLength(2);
     expect(state.activeBoardId).toBe(state.boards[1].id);
@@ -272,7 +279,7 @@ describe('boardStore', () => {
   });
 
   it('deletes a board and falls back the active board if it was deleted', () => {
-    act(() => useBoardStore.getState().createBoard('두번째 보드'));
+    act(() => useBoardStore.getState().createBoard('두번째 보드', 'grid'));
     const state = useBoardStore.getState();
     const firstId = state.boards[0].id;
     const secondId = state.boards[1].id;
@@ -289,5 +296,107 @@ describe('boardStore', () => {
     const boardId = useBoardStore.getState().boards[0].id;
     act(() => useBoardStore.getState().deleteBoard(boardId));
     expect(useBoardStore.getState().boards).toHaveLength(1);
+  });
+});
+
+/** Reads the active board's lines, asserting it's a sheet board. */
+function sheetLines() {
+  const board = useBoardStore.getState().boards[useBoardStore.getState().boards.length - 1];
+  if (board.type !== 'sheet') throw new Error('expected a sheet board');
+  return board.lines;
+}
+
+describe('sheet boards', () => {
+  beforeEach(() => {
+    act(() => useBoardStore.getState().createSheetBoard('악보', { beats: 4, unit: 4 }));
+  });
+
+  it('creates a sheet board with one line of default measures', () => {
+    const lines = sheetLines();
+    expect(lines).toHaveLength(1);
+    expect(lines[0].measures.length).toBeGreaterThan(0);
+    for (const measure of lines[0].measures) {
+      expect(measure.chordIds).toEqual([]);
+    }
+  });
+
+  it('appends chords to a measure in order', () => {
+    const line = sheetLines()[0];
+    const measureId = line.measures[0].id;
+    act(() => {
+      useBoardStore.getState().addChordToMeasure(line.id, measureId, 'C');
+      useBoardStore.getState().addChordToMeasure(line.id, measureId, 'G');
+    });
+    expect(sheetLines()[0].measures[0].chordIds).toEqual(['C', 'G']);
+  });
+
+  it('removes a chord from a measure by index', () => {
+    const line = sheetLines()[0];
+    const measureId = line.measures[0].id;
+    act(() => {
+      useBoardStore.getState().addChordToMeasure(line.id, measureId, 'C');
+      useBoardStore.getState().addChordToMeasure(line.id, measureId, 'G');
+      useBoardStore.getState().removeChordFromMeasure(line.id, measureId, 0);
+    });
+    expect(sheetLines()[0].measures[0].chordIds).toEqual(['G']);
+  });
+
+  it('adds a measure to the end of a line', () => {
+    const line = sheetLines()[0];
+    const before = line.measures.length;
+    act(() => useBoardStore.getState().addMeasure(line.id));
+    expect(sheetLines()[0].measures.length).toBe(before + 1);
+  });
+
+  it('adds a new line', () => {
+    act(() => useBoardStore.getState().addLine());
+    expect(sheetLines()).toHaveLength(2);
+  });
+
+  it('moves a line up and down', () => {
+    act(() => useBoardStore.getState().addLine());
+    const [firstId, secondId] = sheetLines().map((l) => l.id);
+    act(() => useBoardStore.getState().moveLine(secondId, 'up'));
+    expect(sheetLines().map((l) => l.id)).toEqual([secondId, firstId]);
+    act(() => useBoardStore.getState().moveLine(secondId, 'down'));
+    expect(sheetLines().map((l) => l.id)).toEqual([firstId, secondId]);
+  });
+
+  it('does not move a line past the ends', () => {
+    const firstId = sheetLines()[0].id;
+    act(() => useBoardStore.getState().moveLine(firstId, 'up'));
+    expect(sheetLines().map((l) => l.id)).toEqual([firstId]);
+  });
+
+  it('duplicates a line with its chords, right after the original', () => {
+    const line = sheetLines()[0];
+    act(() => useBoardStore.getState().addChordToMeasure(line.id, line.measures[0].id, 'C'));
+    act(() => useBoardStore.getState().duplicateLine(line.id));
+
+    const lines = sheetLines();
+    expect(lines).toHaveLength(2);
+    expect(lines[1].id).not.toBe(line.id);
+    expect(lines[1].measures[0].chordIds).toEqual(['C']);
+    expect(lines[1].measures[0].id).not.toBe(line.measures[0].id);
+  });
+
+  it('deletes a line but refuses to delete the last one', () => {
+    act(() => useBoardStore.getState().addLine());
+    const firstId = sheetLines()[0].id;
+    act(() => useBoardStore.getState().deleteLine(firstId));
+    expect(sheetLines()).toHaveLength(1);
+
+    const onlyId = sheetLines()[0].id;
+    act(() => useBoardStore.getState().deleteLine(onlyId));
+    expect(sheetLines()).toHaveLength(1);
+  });
+
+  it('grid-only actions are no-ops on the active sheet board', () => {
+    const before = useBoardStore.getState().boards;
+    act(() => {
+      useBoardStore.getState().addTile('C', { col: 0, row: 0 });
+      useBoardStore.getState().clearBoard();
+    });
+    expect(useBoardStore.getState().boards).toEqual(before);
   });
 });

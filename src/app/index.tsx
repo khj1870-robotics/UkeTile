@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Board } from '@/components/Board';
 import { BoardsSheet } from '@/components/BoardsSheet';
 import { Palette } from '@/components/Palette';
+import { SheetView } from '@/components/SheetView';
 import { TileContextMenu } from '@/components/TileContextMenu';
 import { getChord } from '@/data/chords';
 import { playChord } from '@/lib/player';
@@ -31,7 +32,15 @@ export default function DashboardScreen() {
   const removeTiles = useBoardStore((s) => s.removeTiles);
   const removeGroup = useBoardStore((s) => s.removeGroup);
   const clearBoard = useBoardStore((s) => s.clearBoard);
+  const addChordToMeasure = useBoardStore((s) => s.addChordToMeasure);
+  const removeChordFromMeasure = useBoardStore((s) => s.removeChordFromMeasure);
+  const addMeasure = useBoardStore((s) => s.addMeasure);
+  const addLine = useBoardStore((s) => s.addLine);
+  const moveLine = useBoardStore((s) => s.moveLine);
+  const duplicateLine = useBoardStore((s) => s.duplicateLine);
+  const deleteLine = useBoardStore((s) => s.deleteLine);
   const createBoard = useBoardStore((s) => s.createBoard);
+  const createSheetBoard = useBoardStore((s) => s.createSheetBoard);
   const setActiveBoard = useBoardStore((s) => s.setActiveBoard);
   const renameBoard = useBoardStore((s) => s.renameBoard);
   const deleteBoard = useBoardStore((s) => s.deleteBoard);
@@ -39,6 +48,8 @@ export default function DashboardScreen() {
   const toggleLeftHanded = useSettingsStore((s) => s.toggleLeftHanded);
   const soundEnabled = useSettingsStore((s) => s.soundEnabled);
   const toggleSound = useSettingsStore((s) => s.toggleSound);
+
+  const isGrid = activeBoard.type === 'grid';
 
   const handlePaletteTap = (chordId: string) => {
     const chord = getChord(chordId);
@@ -66,6 +77,7 @@ export default function DashboardScreen() {
       });
       return;
     }
+    if (activeBoard.type !== 'grid') return;
     const tile = activeBoard.tiles.find((t) => t.id === tileId);
     const chord = tile && getChord(tile.chordId);
     if (chord) playChord(chord);
@@ -75,6 +87,19 @@ export default function DashboardScreen() {
     if (armedQueue.length === 0) return;
     addTiles(armedQueue, { col, row });
     setArmedQueue([]);
+  };
+
+  const handleMeasureTap = (lineId: string, measureId: string) => {
+    if (armedQueue.length === 0) return;
+    for (const chordId of armedQueue) {
+      addChordToMeasure(lineId, measureId, chordId);
+    }
+    setArmedQueue([]);
+  };
+
+  const handleMeasureChordTap = (chordId: string) => {
+    const chord = getChord(chordId);
+    if (chord) playChord(chord);
   };
 
   const handleToggleDeleteMode = () => {
@@ -100,7 +125,7 @@ export default function DashboardScreen() {
   };
 
   const confirmClearBoard = () => {
-    if (activeBoard.tiles.length === 0) return;
+    if (activeBoard.type !== 'grid' || activeBoard.tiles.length === 0) return;
     Alert.alert('전체 삭제', `'${activeBoard.name}'의 타일을 모두 삭제할까요?`, [
       { text: '취소', style: 'cancel' },
       { text: '전체 삭제', style: 'destructive', onPress: () => clearBoard() },
@@ -164,7 +189,8 @@ export default function DashboardScreen() {
         ) : armedQueue.length > 0 ? (
           <View style={styles.armedRow}>
             <Text style={styles.armedText}>
-              {armedQueue.length > 1 ? `${armedQueue.length}개 ` : ''}빈 칸을 탭해 배치하세요
+              {armedQueue.length > 1 ? `${armedQueue.length}개 ` : ''}
+              {isGrid ? '빈 칸을' : '마디를'} 탭해 배치하세요
             </Text>
             <Pressable onPress={() => setArmedQueue([])}>
               <Text style={styles.cancelText}>취소</Text>
@@ -175,29 +201,46 @@ export default function DashboardScreen() {
             <Pressable onPress={() => setBoardsSheetOpen(true)}>
               <Text style={styles.subtitle}>{activeBoard.name} ▾</Text>
             </Pressable>
-            <View style={styles.toggleGroup}>
-              <Pressable onPress={handleToggleDeleteMode}>
-                <Text style={styles.linkText}>선택삭제</Text>
-              </Pressable>
-              <Pressable onPress={confirmClearBoard}>
-                <Text style={styles.dangerText}>전체삭제</Text>
-              </Pressable>
-            </View>
+            {isGrid && (
+              <View style={styles.toggleGroup}>
+                <Pressable onPress={handleToggleDeleteMode}>
+                  <Text style={styles.linkText}>선택삭제</Text>
+                </Pressable>
+                <Pressable onPress={confirmClearBoard}>
+                  <Text style={styles.dangerText}>전체삭제</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         )}
       </View>
 
-      <Board
-        tiles={activeBoard.tiles}
-        hasArmed={armedQueue.length > 0}
-        selectMode={deleteMode}
-        selectedIds={selectedForDelete}
-        onTapTile={handleTileTap}
-        onLongPressMenu={(tileId, x, y) => setContextMenu({ tileId, x, y })}
-        onMoveTile={(tileId, target) => moveTile(tileId, target)}
-        onDuplicateTile={(tileId) => duplicateTile(tileId)}
-        onSlotPress={handleSlotPress}
-      />
+      {activeBoard.type === 'grid' ? (
+        <Board
+          tiles={activeBoard.tiles}
+          hasArmed={armedQueue.length > 0}
+          selectMode={deleteMode}
+          selectedIds={selectedForDelete}
+          onTapTile={handleTileTap}
+          onLongPressMenu={(tileId, x, y) => setContextMenu({ tileId, x, y })}
+          onMoveTile={(tileId, target) => moveTile(tileId, target)}
+          onDuplicateTile={(tileId) => duplicateTile(tileId)}
+          onSlotPress={handleSlotPress}
+        />
+      ) : (
+        <SheetView
+          board={activeBoard}
+          hasArmed={armedQueue.length > 0}
+          onMeasureTap={handleMeasureTap}
+          onChordTap={handleMeasureChordTap}
+          onRemoveChord={removeChordFromMeasure}
+          onAddMeasure={addMeasure}
+          onMoveLine={moveLine}
+          onDuplicateLine={duplicateLine}
+          onDeleteLine={deleteLine}
+          onAddLine={addLine}
+        />
+      )}
 
       <Palette
         armedQueue={armedQueue}
@@ -232,8 +275,12 @@ export default function DashboardScreen() {
           }}
           onRename={renameBoard}
           onDelete={deleteBoard}
-          onCreate={() => {
-            createBoard(`보드 ${boards.length + 1}`);
+          onCreateGrid={() => {
+            createBoard(`보드 ${boards.length + 1}`, 'grid');
+            setBoardsSheetOpen(false);
+          }}
+          onCreateSheet={(timeSignature) => {
+            createSheetBoard(`악보 ${boards.length + 1}`, timeSignature);
             setBoardsSheetOpen(false);
           }}
           onDismiss={() => setBoardsSheetOpen(false)}
