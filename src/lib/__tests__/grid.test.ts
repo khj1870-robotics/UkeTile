@@ -4,7 +4,9 @@ import {
   groupShape,
   nearestFreeAnchor,
   nearestFreeCell,
+  nextFreeCellRightward,
   rowCount,
+  sequentialFreeCells,
   type PlacedTile,
 } from '@/lib/grid';
 
@@ -197,6 +199,55 @@ describe('nearestFreeAnchor', () => {
     const shape = [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }, { col: 4, row: 0 }];
     const anchor = nearestFreeAnchor([], shape, { col: 0, row: 0 }, 4);
     expect(anchor).toBeDefined();
+  });
+});
+
+describe('nextFreeCellRightward', () => {
+  it('returns the starting cell when free', () => {
+    expect(nextFreeCellRightward([], { col: 1, row: 0 }, 4)).toEqual({ col: 1, row: 0 });
+  });
+
+  it('scans rightward past occupied cells before wrapping', () => {
+    const tiles: PlacedTile[] = [
+      { id: 'a', col: 1, row: 0 },
+      { id: 'b', col: 2, row: 0 },
+    ];
+    expect(nextFreeCellRightward(tiles, { col: 1, row: 0 }, 4)).toEqual({ col: 3, row: 0 });
+  });
+
+  it('wraps to the next row once the current row is full', () => {
+    const tiles: PlacedTile[] = [
+      { id: 'a', col: 0, row: 0 },
+      { id: 'b', col: 1, row: 0 },
+      { id: 'c', col: 2, row: 0 },
+      { id: 'd', col: 3, row: 0 },
+    ];
+    expect(nextFreeCellRightward(tiles, { col: 2, row: 0 }, 4)).toEqual({ col: 0, row: 1 });
+  });
+});
+
+describe('sequentialFreeCells', () => {
+  it('lines up N cells left-to-right starting at the given cell', () => {
+    const cells = sequentialFreeCells([], { col: 0, row: 0 }, 3, 4);
+    expect(cells).toEqual([
+      { col: 0, row: 0 },
+      { col: 1, row: 0 },
+      { col: 2, row: 0 },
+    ]);
+  });
+
+  it('skips existing tiles and wraps rows, never colliding', () => {
+    const tiles: PlacedTile[] = [{ id: 'a', col: 1, row: 0 }];
+    const cells = sequentialFreeCells(tiles, { col: 0, row: 0 }, 5, 4);
+    const allKeys = [...tiles.map(cellKey), ...cells.map(cellKey)];
+    expect(new Set(allKeys).size).toBe(allKeys.length);
+    expect(cells).toEqual([
+      { col: 0, row: 0 },
+      { col: 2, row: 0 },
+      { col: 3, row: 0 },
+      { col: 0, row: 1 },
+      { col: 1, row: 1 },
+    ]);
   });
 });
 

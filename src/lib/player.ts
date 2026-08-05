@@ -3,6 +3,7 @@ import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { Chord } from '@/data/chords';
 import { chordMidiNotes } from '@/lib/chordNotes';
 import { NOTE_SAMPLES } from '@/data/sampleMap';
+import { useSettingsStore } from '@/state/settingsStore';
 
 /** Delay between successive strings when strumming, in ms. */
 const STRUM_INTERVAL_MS = 45;
@@ -42,8 +43,9 @@ function playNote(midi: number) {
   player.play();
 }
 
-/** Strum the chord from the G string down to the A string. */
+/** Strum the chord from the G string down to the A string. No-op while muted. */
 export function playChord(chord: Chord) {
+  if (!useSettingsStore.getState().soundEnabled) return;
   ensureAudioMode();
   const notes = chordMidiNotes(chord);
   notes.forEach((midi, string) => {

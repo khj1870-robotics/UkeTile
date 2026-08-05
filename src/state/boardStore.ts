@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { Cell, groupShape, nearestFreeAnchor } from '@/lib/grid';
+import { Cell, groupShape, nearestFreeAnchor, nextFreeCellRightward, sequentialFreeCells } from '@/lib/grid';
 
 /** Fixed number of tile columns on the dashboard grid. */
 export const BOARD_COLS = 4;
@@ -25,12 +25,20 @@ interface BoardState {
   activeBoardId: string;
 
   addTile: (chordId: string, target: Cell) => void;
+  /** Add several chords in a straight line starting at `target`, wrapping rows as needed. */
+  addTiles: (chordIds: string[], target: Cell) => void;
   /** Move a single tile, independent of any tiles it's adjacent to. */
   moveTile: (tileId: string, target: Cell) => void;
+  /** Duplicate a single tile only (not its magnet group), placed just to its right. */
+  duplicateTile: (tileId: string) => void;
   /** Duplicate the whole magnet group containing `tileId` as one unit. */
   duplicateGroup: (tileId: string) => void;
+  /** Remove exactly the given tiles (no group expansion). */
+  removeTiles: (tileIds: string[]) => void;
   /** Remove every tile connected to `tileId`. */
   removeGroup: (tileId: string) => void;
+  /** Remove every tile on the active board. */
+  clearBoard: () => void;
   createBoard: (name: string) => void;
   setActiveBoard: (boardId: string) => void;
   renameBoard: (boardId: string, name: string) => void;
@@ -70,6 +78,19 @@ export const useBoardStore = create<BoardState>()(
           }),
         })),
 
+      addTiles: (chordIds, target) =>
+        set((state) => ({
+          boards: updateActiveBoard(state, (board) => {
+            const cells = sequentialFreeCells(board.tiles, target, chordIds.length, BOARD_COLS);
+            const newTiles: TileData[] = chordIds.map((chordId, i) => ({
+              id: newId('tile'),
+              chordId,
+              ...cells[i],
+            }));
+            return { ...board, tiles: [...board.tiles, ...newTiles] };
+          }),
+        })),
+
       moveTile: (tileId, target) =>
         set((state) => ({
           boards: updateActiveBoard(state, (board) => {
@@ -79,6 +100,17 @@ export const useBoardStore = create<BoardState>()(
               ...board,
               tiles: board.tiles.map((tile) => (tile.id === tileId ? { ...tile, ...cell } : tile)),
             };
+          }),
+        })),
+
+      duplicateTile: (tileId) =>
+        set((state) => ({
+          boards: updateActiveBoard(state, (board) => {
+            const origin = board.tiles.find((tile) => tile.id === tileId);
+            if (!origin) return board;
+            const cell = nextFreeCellRightward(board.tiles, { col: origin.col + 1, row: origin.row }, BOARD_COLS);
+            const copy: TileData = { id: newId('tile'), chordId: origin.chordId, ...cell };
+            return { ...board, tiles: [...board.tiles, copy] };
           }),
         })),
 
@@ -108,6 +140,22 @@ export const useBoardStore = create<BoardState>()(
             const ids = new Set(shape.keys());
             return { ...board, tiles: board.tiles.filter((tile) => !ids.has(tile.id)) };
           }),
+        })),
+
+      removeTiles: (tileIds) =>
+        set((state) => {
+          const ids = new Set(tileIds);
+          return {
+            boards: updateActiveBoard(state, (board) => ({
+              ...board,
+              tiles: board.tiles.filter((tile) => !ids.has(tile.id)),
+            })),
+          };
+        }),
+
+      clearBoard: () =>
+        set((state) => ({
+          boards: updateActiveBoard(state, (board) => ({ ...board, tiles: [] })),
         })),
 
       createBoard: (name) =>

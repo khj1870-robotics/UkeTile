@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Board } from '@/components/Board';
@@ -18,20 +18,27 @@ export default function DashboardScreen() {
   const [multiSelect, setMultiSelect] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ tileId: string; x: number; y: number } | null>(null);
   const [boardsSheetOpen, setBoardsSheetOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
 
   const boards = useBoardStore((s) => s.boards);
   const activeBoardId = useBoardStore((s) => s.activeBoardId);
   const activeBoard = useActiveBoard();
-  const addTile = useBoardStore((s) => s.addTile);
+  const addTiles = useBoardStore((s) => s.addTiles);
   const moveTile = useBoardStore((s) => s.moveTile);
+  const duplicateTile = useBoardStore((s) => s.duplicateTile);
   const duplicateGroup = useBoardStore((s) => s.duplicateGroup);
+  const removeTiles = useBoardStore((s) => s.removeTiles);
   const removeGroup = useBoardStore((s) => s.removeGroup);
+  const clearBoard = useBoardStore((s) => s.clearBoard);
   const createBoard = useBoardStore((s) => s.createBoard);
   const setActiveBoard = useBoardStore((s) => s.setActiveBoard);
   const renameBoard = useBoardStore((s) => s.renameBoard);
   const deleteBoard = useBoardStore((s) => s.deleteBoard);
   const leftHanded = useSettingsStore((s) => s.leftHanded);
   const toggleLeftHanded = useSettingsStore((s) => s.toggleLeftHanded);
+  const soundEnabled = useSettingsStore((s) => s.soundEnabled);
+  const toggleSound = useSettingsStore((s) => s.toggleSound);
 
   const handlePaletteTap = (chordId: string) => {
     const chord = getChord(chordId);
@@ -50,6 +57,15 @@ export default function DashboardScreen() {
   };
 
   const handleTileTap = (tileId: string) => {
+    if (deleteMode) {
+      setSelectedForDelete((prev) => {
+        const next = new Set(prev);
+        if (next.has(tileId)) next.delete(tileId);
+        else next.add(tileId);
+        return next;
+      });
+      return;
+    }
     const tile = activeBoard.tiles.find((t) => t.id === tileId);
     const chord = tile && getChord(tile.chordId);
     if (chord) playChord(chord);
@@ -57,12 +73,38 @@ export default function DashboardScreen() {
 
   const handleSlotPress = (col: number, row: number) => {
     if (armedQueue.length === 0) return;
-    // Each call auto-avoids cells the previous ones just filled, so the
-    // whole queue lands together, magnet-style, starting from this cell.
-    for (const chordId of armedQueue) {
-      addTile(chordId, { col, row });
-    }
+    addTiles(armedQueue, { col, row });
     setArmedQueue([]);
+  };
+
+  const handleToggleDeleteMode = () => {
+    setDeleteMode((prev) => !prev);
+    setSelectedForDelete(new Set());
+  };
+
+  const confirmDeleteSelected = () => {
+    const ids = [...selectedForDelete];
+    if (ids.length === 0) return;
+    Alert.alert('선택한 타일 삭제', `${ids.length}개 타일을 삭제할까요?`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () => {
+          removeTiles(ids);
+          setSelectedForDelete(new Set());
+          setDeleteMode(false);
+        },
+      },
+    ]);
+  };
+
+  const confirmClearBoard = () => {
+    if (activeBoard.tiles.length === 0) return;
+    Alert.alert('전체 삭제', `'${activeBoard.name}'의 타일을 모두 삭제할까요?`, [
+      { text: '취소', style: 'cancel' },
+      { text: '전체 삭제', style: 'destructive', onPress: () => clearBoard() },
+    ]);
   };
 
   // Android hardware/gesture back: dismiss whatever's in-progress on screen
@@ -78,6 +120,11 @@ export default function DashboardScreen() {
         setContextMenu(null);
         return true;
       }
+      if (deleteMode) {
+        setDeleteMode(false);
+        setSelectedForDelete(new Set());
+        return true;
+      }
       if (armedQueue.length > 0) {
         setArmedQueue([]);
         return true;
@@ -85,18 +132,36 @@ export default function DashboardScreen() {
       return false;
     });
     return () => sub.remove();
-  }, [boardsSheetOpen, contextMenu, armedQueue]);
+  }, [boardsSheetOpen, contextMenu, deleteMode, armedQueue]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>UkeTile</Text>
-          <Pressable onPress={toggleLeftHanded} style={styles.handToggle}>
-            <Text style={styles.handToggleText}>{leftHanded ? '왼손잡이' : '오른손잡이'}</Text>
-          </Pressable>
+          <View style={styles.toggleGroup}>
+            <Pressable onPress={toggleSound} style={styles.iconToggle}>
+              <Text style={styles.iconToggleText}>{soundEnabled ? '🔊' : '🔇'}</Text>
+            </Pressable>
+            <Pressable onPress={toggleLeftHanded} style={styles.handToggle}>
+              <Text style={styles.handToggleText}>{leftHanded ? '왼손잡이' : '오른손잡이'}</Text>
+            </Pressable>
+          </View>
         </View>
-        {armedQueue.length > 0 ? (
+
+        {deleteMode ? (
+          <View style={styles.armedRow}>
+            <Text style={styles.armedText}>{selectedForDelete.size}개 선택됨 · 삭제할 타일을 탭하세요</Text>
+            <View style={styles.toggleGroup}>
+              <Pressable onPress={confirmDeleteSelected} disabled={selectedForDelete.size === 0}>
+                <Text style={[styles.dangerText, selectedForDelete.size === 0 && styles.disabledText]}>삭제</Text>
+              </Pressable>
+              <Pressable onPress={handleToggleDeleteMode}>
+                <Text style={styles.cancelText}>취소</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : armedQueue.length > 0 ? (
           <View style={styles.armedRow}>
             <Text style={styles.armedText}>
               {armedQueue.length > 1 ? `${armedQueue.length}개 ` : ''}빈 칸을 탭해 배치하세요
@@ -106,19 +171,31 @@ export default function DashboardScreen() {
             </Pressable>
           </View>
         ) : (
-          <Pressable onPress={() => setBoardsSheetOpen(true)}>
-            <Text style={styles.subtitle}>{activeBoard.name} ▾</Text>
-          </Pressable>
+          <View style={styles.armedRow}>
+            <Pressable onPress={() => setBoardsSheetOpen(true)}>
+              <Text style={styles.subtitle}>{activeBoard.name} ▾</Text>
+            </Pressable>
+            <View style={styles.toggleGroup}>
+              <Pressable onPress={handleToggleDeleteMode}>
+                <Text style={styles.linkText}>선택삭제</Text>
+              </Pressable>
+              <Pressable onPress={confirmClearBoard}>
+                <Text style={styles.dangerText}>전체삭제</Text>
+              </Pressable>
+            </View>
+          </View>
         )}
       </View>
 
       <Board
         tiles={activeBoard.tiles}
         hasArmed={armedQueue.length > 0}
+        selectMode={deleteMode}
+        selectedIds={selectedForDelete}
         onTapTile={handleTileTap}
         onLongPressMenu={(tileId, x, y) => setContextMenu({ tileId, x, y })}
         onMoveTile={(tileId, target) => moveTile(tileId, target)}
-        onDuplicateTile={(tileId) => duplicateGroup(tileId)}
+        onDuplicateTile={(tileId) => duplicateTile(tileId)}
         onSlotPress={handleSlotPress}
       />
 
@@ -178,8 +255,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  toggleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   title: { color: colors.text, fontSize: 22, fontWeight: '800' },
-  subtitle: { color: colors.textDim, fontSize: 13, marginTop: 2 },
+  subtitle: { color: colors.textDim, fontSize: 13 },
+  iconToggle: {
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  iconToggleText: { fontSize: 16 },
   handToggle: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
@@ -191,8 +278,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 2,
+    marginTop: spacing.xs,
   },
   armedText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
   cancelText: { color: colors.textDim, fontSize: 13, fontWeight: '700' },
+  linkText: { color: colors.textDim, fontSize: 12, fontWeight: '700' },
+  dangerText: { color: colors.danger, fontSize: 12, fontWeight: '700' },
+  disabledText: { opacity: 0.4 },
 });

@@ -17,6 +17,9 @@ interface Props {
   onLongPressMenu: (screenX: number, screenY: number) => void;
   onMove: (target: Cell) => void;
   onDuplicate: () => void;
+  /** While selecting tiles for bulk delete: tap-only (toggles selection), no drag/menu/double-tap. */
+  selectMode?: boolean;
+  selected?: boolean;
 }
 
 const LONG_PRESS_MENU_MS = 450;
@@ -44,7 +47,19 @@ const DOUBLE_TAP_MS = 300;
  * flakiness, not something specific to this app) and made dropping fail
  * outright. Relative cell-delta math has no such dependency.
  */
-export function BoardTile({ chordId, size, cellSize, col, row, onTap, onLongPressMenu, onMove, onDuplicate }: Props) {
+export function BoardTile({
+  chordId,
+  size,
+  cellSize,
+  col,
+  row,
+  onTap,
+  onLongPressMenu,
+  onMove,
+  onDuplicate,
+  selectMode = false,
+  selected = false,
+}: Props) {
   const chord = getChord(chordId);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -95,7 +110,7 @@ export function BoardTile({ chordId, size, cellSize, col, row, onTap, onLongPres
   const tap = Gesture.Tap()
     .maxDuration(250)
     .onEnd(() => {
-      runOnJS(handleTap)();
+      runOnJS(selectMode ? onTap : handleTap)();
     });
 
   // A still hold (native maxDistance gate) opens the menu. Runs alongside
@@ -106,7 +121,7 @@ export function BoardTile({ chordId, size, cellSize, col, row, onTap, onLongPres
       runOnJS(onLongPressMenu)(e.absoluteX, e.absoluteY);
     });
 
-  const gesture = Gesture.Simultaneous(Gesture.Exclusive(pan, tap), longPress);
+  const gesture = selectMode ? tap : Gesture.Simultaneous(Gesture.Exclusive(pan, tap), longPress);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }, { translateY: translateY.value }],
@@ -118,7 +133,7 @@ export function BoardTile({ chordId, size, cellSize, col, row, onTap, onLongPres
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View style={animatedStyle}>
-        <TileCard chord={chord} size={size} />
+        <TileCard chord={chord} size={size} selected={selected} />
       </Animated.View>
     </GestureDetector>
   );

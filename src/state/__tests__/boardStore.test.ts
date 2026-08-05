@@ -31,6 +31,99 @@ describe('boardStore', () => {
     expect(tiles[0]).not.toEqual(tiles[1]);
   });
 
+  it('addTiles lines up several chords in a row starting at the target', () => {
+    act(() => useBoardStore.getState().addTiles(['C', 'G', 'Am'], { col: 0, row: 0 }));
+    const tiles = useBoardStore.getState().boards[0].tiles;
+    expect(tiles).toHaveLength(3);
+    const byChord = new Map(tiles.map((t) => [t.chordId, t]));
+    expect(byChord.get('C')).toMatchObject({ col: 0, row: 0 });
+    expect(byChord.get('G')).toMatchObject({ col: 1, row: 0 });
+    expect(byChord.get('Am')).toMatchObject({ col: 2, row: 0 });
+  });
+
+  it('addTiles skips already-occupied cells while lining up', () => {
+    act(() => {
+      useBoardStore.getState().addTile('C', { col: 1, row: 0 });
+      useBoardStore.getState().addTiles(['G', 'Am'], { col: 0, row: 0 });
+    });
+    const tiles = useBoardStore.getState().boards[0].tiles;
+    const byChord = new Map(tiles.map((t) => [t.chordId, t]));
+    expect(byChord.get('G')).toMatchObject({ col: 0, row: 0 });
+    expect(byChord.get('Am')).toMatchObject({ col: 2, row: 0 });
+  });
+
+  it('duplicateTile copies only the single tile, placed to its right', () => {
+    act(() => {
+      useBoardStore.setState((state) => ({
+        boards: state.boards.map((b) => ({
+          ...b,
+          tiles: [
+            { id: 'a', chordId: 'C', col: 0, row: 0 },
+            { id: 'b', chordId: 'G', col: 0, row: 1 },
+          ],
+        })),
+      }));
+    });
+
+    act(() => useBoardStore.getState().duplicateTile('a'));
+
+    const tiles = useBoardStore.getState().boards[0].tiles;
+    expect(tiles).toHaveLength(3);
+    const copy = tiles.find((t) => !['a', 'b'].includes(t.id))!;
+    expect(copy).toMatchObject({ chordId: 'C', col: 1, row: 0 });
+    // The unrelated tile ('b') is untouched — no group expansion.
+    expect(tiles.find((t) => t.id === 'b')).toMatchObject({ col: 0, row: 1 });
+  });
+
+  it('duplicateTile skips rightward past an occupied cell', () => {
+    act(() => {
+      useBoardStore.setState((state) => ({
+        boards: state.boards.map((b) => ({
+          ...b,
+          tiles: [
+            { id: 'a', chordId: 'C', col: 0, row: 0 },
+            { id: 'b', chordId: 'G', col: 1, row: 0 },
+          ],
+        })),
+      }));
+    });
+
+    act(() => useBoardStore.getState().duplicateTile('a'));
+
+    const tiles = useBoardStore.getState().boards[0].tiles;
+    const copy = tiles.find((t) => !['a', 'b'].includes(t.id))!;
+    expect(copy).toMatchObject({ chordId: 'C', col: 2, row: 0 });
+  });
+
+  it('removeTiles removes exactly the given ids, no group expansion', () => {
+    act(() => {
+      useBoardStore.setState((state) => ({
+        boards: state.boards.map((b) => ({
+          ...b,
+          tiles: [
+            { id: 'a', chordId: 'C', col: 0, row: 0 },
+            { id: 'b', chordId: 'G', col: 1, row: 0 },
+            { id: 'c', chordId: 'Am', col: 5, row: 5 },
+          ],
+        })),
+      }));
+    });
+
+    act(() => useBoardStore.getState().removeTiles(['a']));
+
+    const tiles = useBoardStore.getState().boards[0].tiles;
+    expect(tiles.map((t) => t.id).sort()).toEqual(['b', 'c']);
+  });
+
+  it('clearBoard removes every tile on the active board', () => {
+    act(() => {
+      useBoardStore.getState().addTile('C', { col: 0, row: 0 });
+      useBoardStore.getState().addTile('G', { col: 1, row: 0 });
+    });
+    act(() => useBoardStore.getState().clearBoard());
+    expect(useBoardStore.getState().boards[0].tiles).toEqual([]);
+  });
+
   it('moveTile moves a single tile to the requested cell', () => {
     act(() => useBoardStore.getState().addTile('C', { col: 0, row: 0 }));
     const tileId = useBoardStore.getState().boards[0].tiles[0].id;

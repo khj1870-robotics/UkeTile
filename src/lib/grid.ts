@@ -158,6 +158,43 @@ export function nearestFreeCell(
   return nearestFreeAnchor(tiles, [{ col: 0, row: 0 }], target, cols, excludeIds);
 }
 
+/**
+ * The next free cell at or after `from`, scanning left-to-right then
+ * wrapping to the next row (row-major order) — a straight, predictable line
+ * rather than `nearestFreeAnchor`'s expanding-ring "nearest gap" search.
+ */
+export function nextFreeCellRightward(
+  tiles: PlacedTile[],
+  from: Cell,
+  cols: number,
+  excludeIds?: ReadonlySet<string>
+): Cell {
+  const occupied = occupiedKeys(tiles, excludeIds);
+  let cell: Cell = { col: Math.min(Math.max(from.col, 0), cols - 1), row: Math.max(from.row, 0) };
+  while (occupied.has(cellKey(cell))) {
+    cell = cell.col + 1 < cols ? { col: cell.col + 1, row: cell.row } : { col: 0, row: cell.row + 1 };
+  }
+  return cell;
+}
+
+/**
+ * `count` free cells in a row starting at `start`, filling left-to-right and
+ * wrapping to the next row as needed — for placing several new tiles "in a
+ * line" at once instead of scattering them via a nearest-gap search.
+ */
+export function sequentialFreeCells(tiles: PlacedTile[], start: Cell, count: number, cols: number): Cell[] {
+  const cells: Cell[] = [];
+  const working: PlacedTile[] = [...tiles];
+  let cursor = start;
+  for (let i = 0; i < count; i++) {
+    const cell = nextFreeCellRightward(working, cursor, cols);
+    cells.push(cell);
+    working.push({ id: `seq:${i}`, ...cell });
+    cursor = { col: cell.col + 1, row: cell.row };
+  }
+  return cells;
+}
+
 /** Number of rows needed to show every tile plus trailing empty space. */
 export function rowCount(tiles: PlacedTile[], minRows: number): number {
   const maxRow = tiles.reduce((max, tile) => Math.max(max, tile.row), -1);

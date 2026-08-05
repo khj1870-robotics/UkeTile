@@ -11,6 +11,9 @@ interface Props {
   tiles: TileData[];
   /** True while one or more chords are armed for placement from the palette. */
   hasArmed: boolean;
+  /** While true, tiles are tap-only and toggle selection instead of playing/dragging. */
+  selectMode: boolean;
+  selectedIds: ReadonlySet<string>;
   onTapTile: (tileId: string) => void;
   onLongPressMenu: (tileId: string, x: number, y: number) => void;
   onMoveTile: (tileId: string, target: Cell) => void;
@@ -26,7 +29,17 @@ const MIN_VISIBLE_ROWS = 5;
  * wrapping (no absolute-position pixel math) lays out the grid, packed from
  * the top-left so it never centers/stretches to fill extra vertical space.
  */
-export function Board({ tiles, hasArmed, onTapTile, onLongPressMenu, onMoveTile, onDuplicateTile, onSlotPress }: Props) {
+export function Board({
+  tiles,
+  hasArmed,
+  selectMode,
+  selectedIds,
+  onTapTile,
+  onLongPressMenu,
+  onMoveTile,
+  onDuplicateTile,
+  onSlotPress,
+}: Props) {
   const [boardWidth, setBoardWidth] = useState(0);
   const cellSize = boardWidth > 0 ? boardWidth / BOARD_COLS : 0;
 
@@ -52,6 +65,8 @@ export function Board({ tiles, hasArmed, onTapTile, onLongPressMenu, onMoveTile,
                       cellSize={cellSize}
                       col={col}
                       row={row}
+                      selectMode={selectMode}
+                      selected={selectedIds.has(tile.id)}
                       onTap={() => onTapTile(tile.id)}
                       onLongPressMenu={(x, y) => onLongPressMenu(tile.id, x, y)}
                       onMove={(target) => onMoveTile(tile.id, target)}
