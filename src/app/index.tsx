@@ -1,21 +1,16 @@
 import React, { useState } from 'react';
-import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
-import { Board } from '@/components/Board';
-import { DragGhost } from '@/components/DragGhost';
+import { Armed, Board } from '@/components/Board';
 import { Palette } from '@/components/Palette';
 import { TileContextMenu } from '@/components/TileContextMenu';
 import { getChord } from '@/data/chords';
-import { useBoardMetrics } from '@/hooks/useBoardMetrics';
-import { useGhostControls } from '@/hooks/useGhostControls';
 import { playChord } from '@/lib/player';
-import { BOARD_COLS, useActiveBoard, useBoardStore } from '@/state/boardStore';
+import { useActiveBoard, useBoardStore } from '@/state/boardStore';
 import { colors, spacing } from '@/theme';
 
 export default function DashboardScreen() {
-  const [boardWidth, setBoardWidth] = useState(0);
-  const board = useBoardMetrics(setBoardWidth);
-  const ghost = useGhostControls();
+  const [armed, setArmed] = useState<Armed | null>(null);
   const [contextMenu, setContextMenu] = useState<{ tileId: string; x: number; y: number } | null>(null);
 
   const activeBoard = useActiveBoard();
@@ -24,7 +19,11 @@ export default function DashboardScreen() {
   const duplicateGroup = useBoardStore((s) => s.duplicateGroup);
   const removeGroup = useBoardStore((s) => s.removeGroup);
 
-  const cellSize = boardWidth > 0 ? boardWidth / BOARD_COLS : 0;
+  const handlePaletteTap = (chordId: string) => {
+    const chord = getChord(chordId);
+    if (chord) playChord(chord);
+    setArmed((prev) => (prev?.kind === 'chord' && prev.id === chordId ? null : { kind: 'chord', id: chordId }));
+  };
 
   const handleTileTap = (tileId: string) => {
     const tile = activeBoard.tiles.find((t) => t.id === tileId);
@@ -32,43 +31,50 @@ export default function DashboardScreen() {
     if (chord) playChord(chord);
   };
 
-  const handlePaletteTap = (chordId: string) => {
-    const chord = getChord(chordId);
-    if (chord) playChord(chord);
+  const handleSlotPress = (col: number, row: number) => {
+    if (!armed) return;
+    if (armed.kind === 'chord') {
+      addTile(armed.id, { col, row });
+    } else {
+      moveGroup(armed.id, { col, row });
+    }
+    setArmed(null);
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <Text style={styles.title}>UkeTile</Text>
-        <Text style={styles.subtitle}>{activeBoard.name}</Text>
+        {armed ? (
+          <View style={styles.armedRow}>
+            <Text style={styles.armedText}>빈 칸을 탭해 배치하세요</Text>
+            <Pressable onPress={() => setArmed(null)}>
+              <Text style={styles.cancelText}>취소</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Text style={styles.subtitle}>{activeBoard.name}</Text>
+        )}
       </View>
 
-      {cellSize > 0 && (
-        <Board
-          tiles={activeBoard.tiles}
-          cellSize={cellSize}
-          board={board}
-          ghost={ghost}
-          onTapTile={handleTileTap}
-          onDropTile={(tileId, col, row) => moveGroup(tileId, { col, row })}
-          onLongPressMenu={(tileId, x, y) => setContextMenu({ tileId, x, y })}
-        />
-      )}
-
-      <Palette
-        board={board}
-        ghost={ghost}
-        onTap={handlePaletteTap}
-        onDrop={(chordId, col, row) => addTile(chordId, { col, row })}
+      <Board
+        tiles={activeBoard.tiles}
+        armed={armed}
+        onTapTile={handleTileTap}
+        onLongPressMenu={(tileId, x, y) => setContextMenu({ tileId, x, y })}
+        onSlotPress={handleSlotPress}
       />
 
-      <DragGhost x={ghost.x} y={ghost.y} opacity={ghost.opacity} tiles={ghost.tiles} cellSize={ghost.cellSize} />
+      <Palette armedChordId={armed?.kind === 'chord' ? armed.id : null} onTap={handlePaletteTap} />
 
       {contextMenu && (
         <TileContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
+          onMove={() => {
+            setArmed({ kind: 'tile', id: contextMenu.tileId });
+            setContextMenu(null);
+          }}
           onDuplicate={() => {
             duplicateGroup(contextMenu.tileId);
             setContextMenu(null);
@@ -93,4 +99,12 @@ const styles = StyleSheet.create({
   },
   title: { color: colors.text, fontSize: 22, fontWeight: '800' },
   subtitle: { color: colors.textDim, fontSize: 13, marginTop: 2 },
+  armedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  armedText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
+  cancelText: { color: colors.textDim, fontSize: 13, fontWeight: '700' },
 });

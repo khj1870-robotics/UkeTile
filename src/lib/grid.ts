@@ -14,13 +14,6 @@ export interface PlacedTile {
   row: number;
 }
 
-/** Convert a point (relative to the board's content area) to the cell under it. */
-export function pointToCell(x: number, y: number, cellSize: number, cols: number): Cell {
-  const col = Math.min(cols - 1, Math.max(0, Math.floor(x / cellSize)));
-  const row = Math.max(0, Math.floor(y / cellSize));
-  return { col, row };
-}
-
 export function cellKey(cell: Cell): string {
   return `${cell.col},${cell.row}`;
 }

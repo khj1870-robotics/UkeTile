@@ -7,16 +7,17 @@ interface Props {
   /** Screen position (window coordinates) the menu should anchor near. */
   x: number;
   y: number;
+  onMove: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onDismiss: () => void;
 }
 
 const MENU_WIDTH = 160;
-const MENU_HEIGHT = 96;
+const MENU_HEIGHT = 140;
 
-/** Popup shown when a tile (or its whole magnet group) is held still — duplicate/delete. */
-export function TileContextMenu({ x, y, onDuplicate, onDelete, onDismiss }: Props) {
+/** Popup shown when a tile (or its whole magnet group) is held still — move/duplicate/delete. */
+export function TileContextMenu({ x, y, onMove, onDuplicate, onDelete, onDismiss }: Props) {
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
   const left = Math.min(Math.max(spacing.md, x - MENU_WIDTH / 2), screenWidth - MENU_WIDTH - spacing.md);
   const top = Math.min(y, screenHeight - MENU_HEIGHT - spacing.md);
@@ -25,6 +26,10 @@ export function TileContextMenu({ x, y, onDuplicate, onDelete, onDismiss }: Prop
     <>
       <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} />
       <View style={[styles.menu, { left, top }]}>
+        <Pressable style={styles.row} onPress={onMove}>
+          <Text style={styles.rowText}>이동</Text>
+        </Pressable>
+        <View style={styles.divider} />
         <Pressable style={styles.row} onPress={onDuplicate}>
           <Text style={styles.rowText}>복제</Text>
         </Pressable>

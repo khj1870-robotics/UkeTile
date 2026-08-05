@@ -4,22 +4,9 @@ import {
   groupShape,
   nearestFreeAnchor,
   nearestFreeCell,
-  pointToCell,
   rowCount,
   type PlacedTile,
 } from '@/lib/grid';
-
-describe('pointToCell', () => {
-  it('maps a point to its containing cell', () => {
-    expect(pointToCell(0, 0, 100, 4)).toEqual({ col: 0, row: 0 });
-    expect(pointToCell(150, 250, 100, 4)).toEqual({ col: 1, row: 2 });
-  });
-
-  it('clamps columns to the grid width', () => {
-    expect(pointToCell(999, 0, 100, 4)).toEqual({ col: 3, row: 0 });
-    expect(pointToCell(-50, -50, 100, 4)).toEqual({ col: 0, row: 0 });
-  });
-});
 
 describe('nearestFreeCell', () => {
   it('returns the target cell when it is free', () => {

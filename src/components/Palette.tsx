@@ -1,26 +1,24 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { DraggableTile } from '@/components/DraggableTile';
+import { TileCard } from '@/components/TileCard';
 import { chordsForRoot, ROOTS } from '@/data/chords';
-import { BoardMetricsHandle } from '@/hooks/useBoardMetrics';
-import { GhostControlsHandle } from '@/hooks/useGhostControls';
 import { colors, spacing } from '@/theme';
 
 export const PALETTE_TILE_SIZE = 84;
 
 interface Props {
-  board: BoardMetricsHandle;
-  ghost: GhostControlsHandle;
+  /** The chord currently armed for placement, if any (highlighted). */
+  armedChordId: string | null;
   onTap: (chordId: string) => void;
-  onDrop: (chordId: string, col: number, row: number) => void;
 }
 
 /**
- * Two-level chord picker: pick a root (C, D, E, ...), then hold and drag one
- * of its variants (m, 7, sus4, ...) onto the board.
+ * Two-level chord picker: pick a root (C, D, E, ...), then tap one of its
+ * variants (m, 7, sus4, ...) to arm it for placement — tap an empty board
+ * slot next to place it there.
  */
-export function Palette({ board, ghost, onTap, onDrop }: Props) {
+export function Palette({ armedChordId, onTap }: Props) {
   const [rootId, setRootId] = useState(ROOTS[0].id);
   const variants = chordsForRoot(rootId);
 
@@ -45,15 +43,9 @@ export function Palette({ board, ghost, onTap, onDrop }: Props) {
       </ScrollView>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
         {variants.map((chord) => (
-          <DraggableTile
-            key={chord.id}
-            chordId={chord.id}
-            size={PALETTE_TILE_SIZE}
-            board={board}
-            ghost={ghost}
-            onTap={() => onTap(chord.id)}
-            onDrop={(col, row) => onDrop(chord.id, col, row)}
-          />
+          <Pressable key={chord.id} onPress={() => onTap(chord.id)}>
+            <TileCard chord={chord} size={PALETTE_TILE_SIZE} selected={chord.id === armedChordId} />
+          </Pressable>
         ))}
       </ScrollView>
     </View>
