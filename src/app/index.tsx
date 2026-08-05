@@ -3,6 +3,7 @@ import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Board } from '@/components/Board';
+import { BoardsSheet } from '@/components/BoardsSheet';
 import { Palette } from '@/components/Palette';
 import { TileContextMenu } from '@/components/TileContextMenu';
 import { getChord } from '@/data/chords';
@@ -12,22 +13,40 @@ import { useSettingsStore } from '@/state/settingsStore';
 import { colors, spacing } from '@/theme';
 
 export default function DashboardScreen() {
-  /** The chord currently armed for placement from the palette, if any. */
-  const [armedChordId, setArmedChordId] = useState<string | null>(null);
+  /** Chords queued for placement from the palette, in placement order. */
+  const [armedQueue, setArmedQueue] = useState<string[]>([]);
+  const [multiSelect, setMultiSelect] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ tileId: string; x: number; y: number } | null>(null);
+  const [boardsSheetOpen, setBoardsSheetOpen] = useState(false);
 
+  const boards = useBoardStore((s) => s.boards);
+  const activeBoardId = useBoardStore((s) => s.activeBoardId);
   const activeBoard = useActiveBoard();
   const addTile = useBoardStore((s) => s.addTile);
   const moveTile = useBoardStore((s) => s.moveTile);
   const duplicateGroup = useBoardStore((s) => s.duplicateGroup);
   const removeGroup = useBoardStore((s) => s.removeGroup);
+  const createBoard = useBoardStore((s) => s.createBoard);
+  const setActiveBoard = useBoardStore((s) => s.setActiveBoard);
+  const renameBoard = useBoardStore((s) => s.renameBoard);
+  const deleteBoard = useBoardStore((s) => s.deleteBoard);
   const leftHanded = useSettingsStore((s) => s.leftHanded);
   const toggleLeftHanded = useSettingsStore((s) => s.toggleLeftHanded);
 
   const handlePaletteTap = (chordId: string) => {
     const chord = getChord(chordId);
     if (chord) playChord(chord);
-    setArmedChordId((prev) => (prev === chordId ? null : chordId));
+    setArmedQueue((prev) => {
+      if (multiSelect) {
+        return prev.includes(chordId) ? prev.filter((id) => id !== chordId) : [...prev, chordId];
+      }
+      return prev.length === 1 && prev[0] === chordId ? [] : [chordId];
+    });
+  };
+
+  const handleToggleMultiSelect = () => {
+    setMultiSelect((prev) => !prev);
+    setArmedQueue([]);
   };
 
   const handleTileTap = (tileId: string) => {
@@ -37,9 +56,13 @@ export default function DashboardScreen() {
   };
 
   const handleSlotPress = (col: number, row: number) => {
-    if (!armedChordId) return;
-    addTile(armedChordId, { col, row });
-    setArmedChordId(null);
+    if (armedQueue.length === 0) return;
+    // Each call auto-avoids cells the previous ones just filled, so the
+    // whole queue lands together, magnet-style, starting from this cell.
+    for (const chordId of armedQueue) {
+      addTile(chordId, { col, row });
+    }
+    setArmedQueue([]);
   };
 
   // Android hardware/gesture back: dismiss whatever's in-progress on screen
@@ -47,18 +70,22 @@ export default function DashboardScreen() {
   // something to dismiss — otherwise falls through to the default behavior.
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (boardsSheetOpen) {
+        setBoardsSheetOpen(false);
+        return true;
+      }
       if (contextMenu) {
         setContextMenu(null);
         return true;
       }
-      if (armedChordId) {
-        setArmedChordId(null);
+      if (armedQueue.length > 0) {
+        setArmedQueue([]);
         return true;
       }
       return false;
     });
     return () => sub.remove();
-  }, [contextMenu, armedChordId]);
+  }, [boardsSheetOpen, contextMenu, armedQueue]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -69,28 +96,38 @@ export default function DashboardScreen() {
             <Text style={styles.handToggleText}>{leftHanded ? '왼손잡이' : '오른손잡이'}</Text>
           </Pressable>
         </View>
-        {armedChordId ? (
+        {armedQueue.length > 0 ? (
           <View style={styles.armedRow}>
-            <Text style={styles.armedText}>빈 칸을 탭해 배치하세요</Text>
-            <Pressable onPress={() => setArmedChordId(null)}>
+            <Text style={styles.armedText}>
+              {armedQueue.length > 1 ? `${armedQueue.length}개 ` : ''}빈 칸을 탭해 배치하세요
+            </Text>
+            <Pressable onPress={() => setArmedQueue([])}>
               <Text style={styles.cancelText}>취소</Text>
             </Pressable>
           </View>
         ) : (
-          <Text style={styles.subtitle}>{activeBoard.name}</Text>
+          <Pressable onPress={() => setBoardsSheetOpen(true)}>
+            <Text style={styles.subtitle}>{activeBoard.name} ▾</Text>
+          </Pressable>
         )}
       </View>
 
       <Board
         tiles={activeBoard.tiles}
-        armedChordId={armedChordId}
+        hasArmed={armedQueue.length > 0}
         onTapTile={handleTileTap}
         onLongPressMenu={(tileId, x, y) => setContextMenu({ tileId, x, y })}
         onMoveTile={(tileId, target) => moveTile(tileId, target)}
+        onDuplicateTile={(tileId) => duplicateGroup(tileId)}
         onSlotPress={handleSlotPress}
       />
 
-      <Palette armedChordId={armedChordId} onTap={handlePaletteTap} />
+      <Palette
+        armedQueue={armedQueue}
+        multiSelect={multiSelect}
+        onToggleMultiSelect={handleToggleMultiSelect}
+        onTap={handlePaletteTap}
+      />
 
       {contextMenu && (
         <TileContextMenu
@@ -105,6 +142,24 @@ export default function DashboardScreen() {
             setContextMenu(null);
           }}
           onDismiss={() => setContextMenu(null)}
+        />
+      )}
+
+      {boardsSheetOpen && (
+        <BoardsSheet
+          boards={boards}
+          activeBoardId={activeBoardId}
+          onSelect={(boardId) => {
+            setActiveBoard(boardId);
+            setBoardsSheetOpen(false);
+          }}
+          onRename={renameBoard}
+          onDelete={deleteBoard}
+          onCreate={() => {
+            createBoard(`보드 ${boards.length + 1}`);
+            setBoardsSheetOpen(false);
+          }}
+          onDismiss={() => setBoardsSheetOpen(false)}
         />
       )}
     </SafeAreaView>

@@ -9,11 +9,12 @@ import { colors, spacing } from '@/theme';
 
 interface Props {
   tiles: TileData[];
-  /** The chord (if any) currently armed for placement from the palette. */
-  armedChordId: string | null;
+  /** True while one or more chords are armed for placement from the palette. */
+  hasArmed: boolean;
   onTapTile: (tileId: string) => void;
   onLongPressMenu: (tileId: string, x: number, y: number) => void;
   onMoveTile: (tileId: string, target: Cell) => void;
+  onDuplicateTile: (tileId: string) => void;
   onSlotPress: (col: number, row: number) => void;
 }
 
@@ -25,7 +26,7 @@ const MIN_VISIBLE_ROWS = 5;
  * wrapping (no absolute-position pixel math) lays out the grid, packed from
  * the top-left so it never centers/stretches to fill extra vertical space.
  */
-export function Board({ tiles, armedChordId, onTapTile, onLongPressMenu, onMoveTile, onSlotPress }: Props) {
+export function Board({ tiles, hasArmed, onTapTile, onLongPressMenu, onMoveTile, onDuplicateTile, onSlotPress }: Props) {
   const [boardWidth, setBoardWidth] = useState(0);
   const cellSize = boardWidth > 0 ? boardWidth / BOARD_COLS : 0;
 
@@ -54,9 +55,10 @@ export function Board({ tiles, armedChordId, onTapTile, onLongPressMenu, onMoveT
                       onTap={() => onTapTile(tile.id)}
                       onLongPressMenu={(x, y) => onLongPressMenu(tile.id, x, y)}
                       onMove={(target) => onMoveTile(tile.id, target)}
+                      onDuplicate={() => onDuplicateTile(tile.id)}
                     />
                   ) : (
-                    <EmptySlot size={inner} active={!!armedChordId} onPress={() => onSlotPress(col, row)} />
+                    <EmptySlot size={inner} active={hasArmed} onPress={() => onSlotPress(col, row)} />
                   )}
                 </View>
               );

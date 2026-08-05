@@ -33,6 +33,9 @@ interface BoardState {
   removeGroup: (tileId: string) => void;
   createBoard: (name: string) => void;
   setActiveBoard: (boardId: string) => void;
+  renameBoard: (boardId: string, name: string) => void;
+  /** No-op if `boardId` is the only remaining board. */
+  deleteBoard: (boardId: string) => void;
 }
 
 let idCounter = 0;
@@ -117,6 +120,20 @@ export const useBoardStore = create<BoardState>()(
         set((state) =>
           state.boards.some((board) => board.id === boardId) ? { activeBoardId: boardId } : state
         ),
+
+      renameBoard: (boardId, name) =>
+        set((state) => ({
+          boards: state.boards.map((board) => (board.id === boardId ? { ...board, name } : board)),
+        })),
+
+      deleteBoard: (boardId) =>
+        set((state) => {
+          if (state.boards.length <= 1) return state;
+          const boards = state.boards.filter((board) => board.id !== boardId);
+          const activeBoardId =
+            state.activeBoardId === boardId ? boards[0].id : state.activeBoardId;
+          return { boards, activeBoardId };
+        }),
     }),
     {
       name: 'uketile-boards',

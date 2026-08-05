@@ -171,4 +171,30 @@ describe('boardStore', () => {
     expect(state.activeBoardId).toBe(state.boards[1].id);
     expect(state.boards[1].name).toBe('새 보드');
   });
+
+  it('renames a board', () => {
+    const boardId = useBoardStore.getState().boards[0].id;
+    act(() => useBoardStore.getState().renameBoard(boardId, '연습곡'));
+    expect(useBoardStore.getState().boards[0].name).toBe('연습곡');
+  });
+
+  it('deletes a board and falls back the active board if it was deleted', () => {
+    act(() => useBoardStore.getState().createBoard('두번째 보드'));
+    const state = useBoardStore.getState();
+    const firstId = state.boards[0].id;
+    const secondId = state.boards[1].id;
+    expect(state.activeBoardId).toBe(secondId);
+
+    act(() => useBoardStore.getState().deleteBoard(secondId));
+
+    const after = useBoardStore.getState();
+    expect(after.boards.map((b) => b.id)).toEqual([firstId]);
+    expect(after.activeBoardId).toBe(firstId);
+  });
+
+  it('refuses to delete the only remaining board', () => {
+    const boardId = useBoardStore.getState().boards[0].id;
+    act(() => useBoardStore.getState().deleteBoard(boardId));
+    expect(useBoardStore.getState().boards).toHaveLength(1);
+  });
 });

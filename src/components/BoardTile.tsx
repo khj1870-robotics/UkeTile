@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
@@ -16,15 +16,26 @@ interface Props {
   onTap: () => void;
   onLongPressMenu: (screenX: number, screenY: number) => void;
   onMove: (target: Cell) => void;
+  onDuplicate: () => void;
 }
 
 const LONG_PRESS_MENU_MS = 450;
+/** Max gap (ms) between two taps for the second one to count as a duplicate. */
+const DOUBLE_TAP_MS = 300;
 
 /**
- * A tile already placed on the board: tap to play its sound, press-and-drag
- * to move it, or hold still to open the duplicate/delete menu.
+ * A tile already placed on the board: tap to play its sound (tap again
+ * quickly to duplicate instead), press-and-drag to move it, or hold still to
+ * open the duplicate/delete menu.
  *
- * The drop target is computed purely from `translationX/Y` (how far the
+ * Double-tap is detected with a plain JS timestamp comparison rather than
+ * RNGH's built-in `numberOfTaps(2)`, which would force every single tap to
+ * wait out the double-tap window before firing — noticeable lag on the most
+ * common interaction (tap to preview a chord's sound). This way a single tap
+ * still fires immediately every time; a second tap arriving soon after is
+ * additionally treated as "duplicate" instead of also playing sound again.
+ *
+ * The drag drop target is computed purely from `translationX/Y` (how far the
  * finger has moved since the gesture started) divided by the known cell
  * size — never from any window/absolute-position measurement. Earlier
  * drag implementations compared the finger's absolute screen position
@@ -33,11 +44,23 @@ const LONG_PRESS_MENU_MS = 450;
  * flakiness, not something specific to this app) and made dropping fail
  * outright. Relative cell-delta math has no such dependency.
  */
-export function BoardTile({ chordId, size, cellSize, col, row, onTap, onLongPressMenu, onMove }: Props) {
+export function BoardTile({ chordId, size, cellSize, col, row, onTap, onLongPressMenu, onMove, onDuplicate }: Props) {
   const chord = getChord(chordId);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const dragging = useSharedValue(0);
+  const lastTapAt = useRef(0);
+
+  const handleTap = () => {
+    const now = Date.now();
+    const isDoubleTap = now - lastTapAt.current < DOUBLE_TAP_MS;
+    lastTapAt.current = isDoubleTap ? 0 : now;
+    if (isDoubleTap) {
+      onDuplicate();
+    } else {
+      onTap();
+    }
+  };
 
   const finishMove = (deltaCol: number, deltaRow: number) => {
     if (deltaCol === 0 && deltaRow === 0) return;
@@ -72,7 +95,7 @@ export function BoardTile({ chordId, size, cellSize, col, row, onTap, onLongPres
   const tap = Gesture.Tap()
     .maxDuration(250)
     .onEnd(() => {
-      runOnJS(onTap)();
+      runOnJS(handleTap)();
     });
 
   // A still hold (native maxDistance gate) opens the menu. Runs alongside
