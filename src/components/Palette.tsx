@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { TileCard } from '@/components/TileCard';
-import { chordsForRoot, ROOTS } from '@/data/chords';
+import { Chord, chordsForRoot, ROOTS } from '@/data/chords';
 import { colors, spacing } from '@/theme';
 
 export const PALETTE_TILE_SIZE = 84;
@@ -13,6 +15,71 @@ interface Props {
   multiSelect: boolean;
   onToggleMultiSelect: () => void;
   onTap: (chordId: string) => void;
+  /** A palette tile was dragged and released at this screen position — try to drop it there. */
+  onDropChord: (chordId: string, screenX: number, screenY: number) => void;
+}
+
+/**
+ * A palette tile that can be tapped (arms it for tap-to-place, as before) or
+ * dragged directly onto a board slot / sheet measure. The drag itself reuses
+ * `BoardTile`'s proven pattern: the tile just follows the finger visually via
+ * `translationX/Y`, and only the gesture's native `absoluteX/Y` (never a
+ * one-shot window measurement) is reported to the caller at drop time, which
+ * hit-tests it against the target's passively-collected layout.
+ */
+function PaletteTile({
+  chord,
+  selected,
+  onTap,
+  onDrop,
+}: {
+  chord: Chord;
+  selected: boolean;
+  onTap: () => void;
+  onDrop: (screenX: number, screenY: number) => void;
+}) {
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const dragging = useSharedValue(0);
+
+  const pan = Gesture.Pan()
+    .activateAfterLongPress(60)
+    .onStart(() => {
+      dragging.value = 1;
+    })
+    .onUpdate((e) => {
+      translateX.value = e.translationX;
+      translateY.value = e.translationY;
+    })
+    .onEnd((e) => {
+      runOnJS(onDrop)(e.absoluteX, e.absoluteY);
+    })
+    .onFinalize(() => {
+      dragging.value = 0;
+      translateX.value = withTiming(0, { duration: 150 });
+      translateY.value = withTiming(0, { duration: 150 });
+    });
+
+  const tap = Gesture.Tap()
+    .maxDuration(250)
+    .onEnd(() => {
+      runOnJS(onTap)();
+    });
+
+  const gesture = Gesture.Exclusive(pan, tap);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }, { translateY: translateY.value }],
+    zIndex: dragging.value ? 10 : 0,
+  }));
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View style={animatedStyle}>
+        <TileCard chord={chord} size={PALETTE_TILE_SIZE} selected={selected} />
+      </Animated.View>
+    </GestureDetector>
+  );
 }
 
 /**
@@ -20,10 +87,12 @@ interface Props {
  * variants (m, 7, sus4, ...) to arm it for placement — tap an empty board
  * slot next to place it there. With multi-select on, tapping several
  * variants queues them all; the next empty-slot tap places every queued
- * chord at once (they auto-fill the nearest free cells, magnet-style).
+ * chord at once (they auto-fill the nearest free cells, magnet-style). A
+ * variant tile can also be dragged straight onto a slot/measure instead.
  */
-export function Palette({ armedQueue, multiSelect, onToggleMultiSelect, onTap }: Props) {
+export function Palette({ armedQueue, multiSelect, onToggleMultiSelect, onTap, onDropChord }: Props) {
   const [rootId, setRootId] = useState(ROOTS[0].id);
+  const [collapsed, setCollapsed] = useState(false);
   const variants = chordsForRoot(rootId);
 
   return (
@@ -54,14 +123,23 @@ export function Palette({ armedQueue, multiSelect, onToggleMultiSelect, onTap }:
             {multiSelect ? `여러개 선택 중 (${armedQueue.length})` : '여러개 선택'}
           </Text>
         </Pressable>
+        <Pressable style={styles.collapseToggle} onPress={() => setCollapsed((prev) => !prev)}>
+          <Text style={styles.collapseToggleText}>{collapsed ? '▲' : '▼'}</Text>
+        </Pressable>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
-        {variants.map((chord) => (
-          <Pressable key={chord.id} onPress={() => onTap(chord.id)}>
-            <TileCard chord={chord} size={PALETTE_TILE_SIZE} selected={armedQueue.includes(chord.id)} />
-          </Pressable>
-        ))}
-      </ScrollView>
+      {!collapsed && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
+          {variants.map((chord) => (
+            <PaletteTile
+              key={chord.id}
+              chord={chord}
+              selected={armedQueue.includes(chord.id)}
+              onTap={() => onTap(chord.id)}
+              onDrop={(x, y) => onDropChord(chord.id, x, y)}
+            />
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -115,6 +193,19 @@ const styles = StyleSheet.create({
   },
   multiToggleTextActive: {
     color: colors.accentText,
+  },
+  collapseToggle: {
+    marginTop: spacing.sm,
+    marginLeft: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceRaised,
+  },
+  collapseToggleText: {
+    color: colors.textDim,
+    fontSize: 12,
+    fontWeight: '700',
   },
   content: {
     paddingHorizontal: spacing.md,

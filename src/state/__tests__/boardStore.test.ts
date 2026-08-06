@@ -353,19 +353,56 @@ describe('sheet boards', () => {
     expect(sheetLines()).toHaveLength(2);
   });
 
-  it('moves a line up and down', () => {
+  it('moves a line to a later gap', () => {
+    act(() => useBoardStore.getState().addLine());
+    act(() => useBoardStore.getState().addLine());
+    const [firstId, secondId, thirdId] = sheetLines().map((l) => l.id);
+    // gap 3 = past the end of the 3-line list
+    act(() => useBoardStore.getState().moveLineTo(firstId, 3));
+    expect(sheetLines().map((l) => l.id)).toEqual([secondId, thirdId, firstId]);
+  });
+
+  it('moves a line to an earlier gap', () => {
+    act(() => useBoardStore.getState().addLine());
+    act(() => useBoardStore.getState().addLine());
+    const [firstId, secondId, thirdId] = sheetLines().map((l) => l.id);
+    act(() => useBoardStore.getState().moveLineTo(thirdId, 0));
+    expect(sheetLines().map((l) => l.id)).toEqual([thirdId, firstId, secondId]);
+  });
+
+  it('is a no-op when the gap is adjacent to the line itself', () => {
     act(() => useBoardStore.getState().addLine());
     const [firstId, secondId] = sheetLines().map((l) => l.id);
-    act(() => useBoardStore.getState().moveLine(secondId, 'up'));
-    expect(sheetLines().map((l) => l.id)).toEqual([secondId, firstId]);
-    act(() => useBoardStore.getState().moveLine(secondId, 'down'));
+    act(() => useBoardStore.getState().moveLineTo(firstId, 0));
+    expect(sheetLines().map((l) => l.id)).toEqual([firstId, secondId]);
+    act(() => useBoardStore.getState().moveLineTo(firstId, 1));
     expect(sheetLines().map((l) => l.id)).toEqual([firstId, secondId]);
   });
 
-  it('does not move a line past the ends', () => {
-    const firstId = sheetLines()[0].id;
-    act(() => useBoardStore.getState().moveLine(firstId, 'up'));
-    expect(sheetLines().map((l) => l.id)).toEqual([firstId]);
+  it('is a no-op for an unknown line id', () => {
+    const before = sheetLines().map((l) => l.id);
+    act(() => useBoardStore.getState().moveLineTo('nope', 0));
+    expect(sheetLines().map((l) => l.id)).toEqual(before);
+  });
+
+  it('drops a chord onto a line, filling the first empty measure', () => {
+    const line = sheetLines()[0];
+    act(() => useBoardStore.getState().addChordToLine(line.id, 'C'));
+    expect(sheetLines()[0].measures[0].chordIds).toEqual(['C']);
+  });
+
+  it('adds a new measure when every measure in the line already has a chord', () => {
+    const line = sheetLines()[0];
+    act(() => {
+      for (const measure of line.measures) {
+        useBoardStore.getState().addChordToMeasure(line.id, measure.id, 'C');
+      }
+    });
+    const before = sheetLines()[0].measures.length;
+    act(() => useBoardStore.getState().addChordToLine(line.id, 'G'));
+    const measures = sheetLines()[0].measures;
+    expect(measures.length).toBe(before + 1);
+    expect(measures[measures.length - 1].chordIds).toEqual(['G']);
   });
 
   it('duplicates a line with its chords, right after the original', () => {

@@ -83,14 +83,20 @@ interface BoardState {
 
   /** Append a chord to the end of a measure's slot list. */
   addChordToMeasure: (lineId: string, measureId: string, chordId: string) => void;
+  /** Drop a chord onto a line without picking a specific measure: fills the first empty measure, or adds a new one. */
+  addChordToLine: (lineId: string, chordId: string) => void;
   /** Remove one chord slot from a measure by index. */
   removeChordFromMeasure: (lineId: string, measureId: string, index: number) => void;
   /** Append an empty measure to the end of a line. */
   addMeasure: (lineId: string) => void;
   /** Append a new empty line (with default measures) to the active sheet board. */
   addLine: () => void;
-  /** Swap a line with its neighbor above/below. */
-  moveLine: (lineId: string, direction: 'up' | 'down') => void;
+  /**
+   * Move a line to the gap at `gapIndex` (0..line count, counted between/around
+   * the *current* lines before this line is pulled out) — the reorder-mode
+   * insertion-line UI.
+   */
+  moveLineTo: (lineId: string, gapIndex: number) => void;
   duplicateLine: (lineId: string) => void;
   deleteLine: (lineId: string) => void;
 
@@ -116,7 +122,13 @@ function newLine(): SheetLine {
   return { id: newId('line'), measures: Array.from({ length: DEFAULT_MEASURES_PER_LINE }, newMeasure) };
 }
 
-const initialBoard: GridBoard = { id: 'board-1', name: '보드 1', type: 'grid', tiles: [] };
+const initialBoard: SheetBoard = {
+  id: 'board-1',
+  name: '보드 1',
+  type: 'sheet',
+  timeSignature: TIME_SIGNATURE_PRESETS[0],
+  lines: [newLine()],
+};
 
 /** Applies `update` to the active board only if it's a grid board; otherwise a no-op. */
 function updateActiveGridBoard(
@@ -252,6 +264,23 @@ export const useBoardStore = create<BoardState>()(
           })),
         })),
 
+      addChordToLine: (lineId, chordId) =>
+        set((state) => ({
+          boards: updateActiveSheetBoard(state, (board) => ({
+            ...board,
+            lines: board.lines.map((line) => {
+              if (line.id !== lineId) return line;
+              const emptyIndex = line.measures.findIndex((measure) => measure.chordIds.length === 0);
+              if (emptyIndex >= 0) {
+                const measures = [...line.measures];
+                measures[emptyIndex] = { ...measures[emptyIndex], chordIds: [chordId] };
+                return { ...line, measures };
+              }
+              return { ...line, measures: [...line.measures, { id: newId('measure'), chordIds: [chordId] }] };
+            }),
+          })),
+        })),
+
       removeChordFromMeasure: (lineId, measureId, index) =>
         set((state) => ({
           boards: updateActiveSheetBoard(state, (board) => ({
@@ -286,14 +315,19 @@ export const useBoardStore = create<BoardState>()(
           boards: updateActiveSheetBoard(state, (board) => ({ ...board, lines: [...board.lines, newLine()] })),
         })),
 
-      moveLine: (lineId, direction) =>
+      moveLineTo: (lineId, gapIndex) =>
         set((state) => ({
           boards: updateActiveSheetBoard(state, (board) => {
-            const index = board.lines.findIndex((line) => line.id === lineId);
-            const swapWith = direction === 'up' ? index - 1 : index + 1;
-            if (index < 0 || swapWith < 0 || swapWith >= board.lines.length) return board;
+            const fromIndex = board.lines.findIndex((line) => line.id === lineId);
+            if (fromIndex < 0) return board;
+            const gap = Math.max(0, Math.min(gapIndex, board.lines.length));
+            // A gap at or right after the source's own slot is a no-op once the
+            // source is removed, so only the gap position itself needs shifting.
+            const insertAt = gap > fromIndex ? gap - 1 : gap;
+            if (insertAt === fromIndex) return board;
             const lines = [...board.lines];
-            [lines[index], lines[swapWith]] = [lines[swapWith], lines[index]];
+            const [moved] = lines.splice(fromIndex, 1);
+            lines.splice(insertAt, 0, moved);
             return { ...board, lines };
           }),
         })),

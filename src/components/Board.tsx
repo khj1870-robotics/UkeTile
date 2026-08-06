@@ -1,11 +1,20 @@
 import React, { useState } from 'react';
-import { LayoutChangeEvent, ScrollView, StyleSheet, View } from 'react-native';
+import { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, View } from 'react-native';
 
 import { BoardTile } from '@/components/BoardTile';
 import { EmptySlot } from '@/components/EmptySlot';
 import { Cell, cellKey, rowCount } from '@/lib/grid';
 import { BOARD_COLS, TileData } from '@/state/boardStore';
 import { colors, spacing } from '@/theme';
+
+/** Screen bounds + scroll offset of the board container, kept fresh via passive layout/scroll events (never an imperative measure call) so a palette drag can hit-test against it at drop time. */
+export interface BoardLayoutRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scrollY: number;
+}
 
 interface Props {
   tiles: TileData[];
@@ -19,6 +28,8 @@ interface Props {
   onMoveTile: (tileId: string, target: Cell) => void;
   onDuplicateTile: (tileId: string) => void;
   onSlotPress: (col: number, row: number) => void;
+  /** Written on layout/scroll for the palette's drag-drop hit test; read only at drop time. */
+  layoutRef?: React.MutableRefObject<BoardLayoutRect>;
 }
 
 const MIN_VISIBLE_ROWS = 5;
@@ -39,11 +50,20 @@ export function Board({
   onMoveTile,
   onDuplicateTile,
   onSlotPress,
+  layoutRef,
 }: Props) {
   const [boardWidth, setBoardWidth] = useState(0);
   const cellSize = boardWidth > 0 ? boardWidth / BOARD_COLS : 0;
 
-  const onLayout = (e: LayoutChangeEvent) => setBoardWidth(e.nativeEvent.layout.width);
+  const onLayout = (e: LayoutChangeEvent) => {
+    const { x, y, width, height } = e.nativeEvent.layout;
+    setBoardWidth(width);
+    if (layoutRef) layoutRef.current = { ...layoutRef.current, x, y, width, height };
+  };
+
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (layoutRef) layoutRef.current = { ...layoutRef.current, scrollY: e.nativeEvent.contentOffset.y };
+  };
 
   const rows = rowCount(tiles, MIN_VISIBLE_ROWS);
   const byCell = new Map(tiles.map((tile) => [cellKey(tile), tile]));
@@ -51,7 +71,7 @@ export function Board({
   return (
     <View style={styles.container} onLayout={onLayout}>
       {cellSize > 0 && (
-        <ScrollView contentContainerStyle={styles.grid}>
+        <ScrollView contentContainerStyle={styles.grid} onScroll={onScroll} scrollEventThrottle={16}>
           {Array.from({ length: rows }, (_, row) =>
             Array.from({ length: BOARD_COLS }, (_, col) => {
               const tile = byCell.get(cellKey({ col, row }));

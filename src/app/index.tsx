@@ -1,15 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Board } from '@/components/Board';
+import { Board, BoardLayoutRect } from '@/components/Board';
 import { BoardsSheet } from '@/components/BoardsSheet';
 import { Palette } from '@/components/Palette';
-import { SheetView } from '@/components/SheetView';
+import { SheetLayoutRect, SheetView } from '@/components/SheetView';
 import { TileContextMenu } from '@/components/TileContextMenu';
 import { getChord } from '@/data/chords';
 import { playChord } from '@/lib/player';
-import { useActiveBoard, useBoardStore } from '@/state/boardStore';
+import { BOARD_COLS, useActiveBoard, useBoardStore } from '@/state/boardStore';
 import { useSettingsStore } from '@/state/settingsStore';
 import { colors, spacing } from '@/theme';
 
@@ -22,9 +22,13 @@ export default function DashboardScreen() {
   const [deleteMode, setDeleteMode] = useState(false);
   const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
 
+  const boardLayoutRef = useRef<BoardLayoutRect>({ x: 0, y: 0, width: 0, height: 0, scrollY: 0 });
+  const sheetLayoutRef = useRef<SheetLayoutRect>({ x: 0, y: 0, width: 0, height: 0, scrollY: 0, lineBounds: new Map() });
+
   const boards = useBoardStore((s) => s.boards);
   const activeBoardId = useBoardStore((s) => s.activeBoardId);
   const activeBoard = useActiveBoard();
+  const addTile = useBoardStore((s) => s.addTile);
   const addTiles = useBoardStore((s) => s.addTiles);
   const moveTile = useBoardStore((s) => s.moveTile);
   const duplicateTile = useBoardStore((s) => s.duplicateTile);
@@ -33,10 +37,11 @@ export default function DashboardScreen() {
   const removeGroup = useBoardStore((s) => s.removeGroup);
   const clearBoard = useBoardStore((s) => s.clearBoard);
   const addChordToMeasure = useBoardStore((s) => s.addChordToMeasure);
+  const addChordToLine = useBoardStore((s) => s.addChordToLine);
   const removeChordFromMeasure = useBoardStore((s) => s.removeChordFromMeasure);
   const addMeasure = useBoardStore((s) => s.addMeasure);
   const addLine = useBoardStore((s) => s.addLine);
-  const moveLine = useBoardStore((s) => s.moveLine);
+  const moveLineTo = useBoardStore((s) => s.moveLineTo);
   const duplicateLine = useBoardStore((s) => s.duplicateLine);
   const deleteLine = useBoardStore((s) => s.deleteLine);
   const createBoard = useBoardStore((s) => s.createBoard);
@@ -95,6 +100,36 @@ export default function DashboardScreen() {
       addChordToMeasure(lineId, measureId, chordId);
     }
     setArmedQueue([]);
+  };
+
+  // Palette drag-drop: hit-test the drop point against whichever board is
+  // active, using bounds gathered passively via onLayout/onScroll (never an
+  // imperative measure call) — the same reliability principle as BoardTile's
+  // relative-delta move, just applied to an absolute drop point since the
+  // gesture starts outside the board and has no "known starting cell".
+  const handlePaletteDrop = (chordId: string, screenX: number, screenY: number) => {
+    if (activeBoard.type === 'grid') {
+      const rect = boardLayoutRef.current;
+      if (rect.width <= 0 || rect.height <= 0) return;
+      if (screenX < rect.x || screenX > rect.x + rect.width) return;
+      if (screenY < rect.y || screenY > rect.y + rect.height) return;
+      const cellSize = rect.width / BOARD_COLS;
+      const col = Math.floor((screenX - rect.x) / cellSize);
+      const row = Math.floor((screenY - rect.y + rect.scrollY) / cellSize);
+      addTile(chordId, { col, row });
+    } else {
+      const rect = sheetLayoutRef.current;
+      if (rect.width <= 0 || rect.height <= 0) return;
+      if (screenX < rect.x || screenX > rect.x + rect.width) return;
+      if (screenY < rect.y || screenY > rect.y + rect.height) return;
+      const contentY = screenY - rect.y + rect.scrollY;
+      for (const [lineId, bounds] of rect.lineBounds) {
+        if (contentY >= bounds.y && contentY <= bounds.y + bounds.height) {
+          addChordToLine(lineId, chordId);
+          break;
+        }
+      }
+    }
   };
 
   const handleMeasureChordTap = (chordId: string) => {
@@ -163,13 +198,23 @@ export default function DashboardScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <Text style={styles.title}>UkeTile</Text>
+          <View style={styles.toggleGroup}>
+            <Pressable onPress={toggleLeftHanded} style={styles.handToggle}>
+              <Text style={styles.handToggleText}>{leftHanded ? '왼손잡이' : '오른손잡이'}</Text>
+            </Pressable>
+          </View>
+          <View style={styles.titleCenterWrap} pointerEvents="none">
+            <Text style={styles.title}>UkeTile</Text>
+          </View>
           <View style={styles.toggleGroup}>
             <Pressable onPress={toggleSound} style={styles.iconToggle}>
               <Text style={styles.iconToggleText}>{soundEnabled ? '🔊' : '🔇'}</Text>
             </Pressable>
-            <Pressable onPress={toggleLeftHanded} style={styles.handToggle}>
-              <Text style={styles.handToggleText}>{leftHanded ? '왼손잡이' : '오른손잡이'}</Text>
+            <Pressable disabled style={styles.iconToggle}>
+              <Text style={[styles.iconToggleText, styles.iconInactive]}>🎵</Text>
+            </Pressable>
+            <Pressable disabled style={styles.iconToggle}>
+              <Text style={[styles.iconToggleText, styles.iconInactive]}>▶</Text>
             </Pressable>
           </View>
         </View>
@@ -226,6 +271,7 @@ export default function DashboardScreen() {
           onMoveTile={(tileId, target) => moveTile(tileId, target)}
           onDuplicateTile={(tileId) => duplicateTile(tileId)}
           onSlotPress={handleSlotPress}
+          layoutRef={boardLayoutRef}
         />
       ) : (
         <SheetView
@@ -235,10 +281,11 @@ export default function DashboardScreen() {
           onChordTap={handleMeasureChordTap}
           onRemoveChord={removeChordFromMeasure}
           onAddMeasure={addMeasure}
-          onMoveLine={moveLine}
           onDuplicateLine={duplicateLine}
           onDeleteLine={deleteLine}
+          onMoveLineTo={moveLineTo}
           onAddLine={addLine}
+          layoutRef={sheetLayoutRef}
         />
       )}
 
@@ -247,6 +294,7 @@ export default function DashboardScreen() {
         multiSelect={multiSelect}
         onToggleMultiSelect={handleToggleMultiSelect}
         onTap={handlePaletteTap}
+        onDropChord={handlePaletteDrop}
       />
 
       {contextMenu && (
@@ -301,6 +349,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    position: 'relative',
+  },
+  titleCenterWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
   toggleGroup: {
     flexDirection: 'row',
@@ -308,6 +363,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   title: { color: colors.text, fontSize: 22, fontWeight: '800' },
+  iconInactive: { opacity: 0.35 },
   subtitle: { color: colors.textDim, fontSize: 13 },
   iconToggle: {
     paddingHorizontal: spacing.xs,
