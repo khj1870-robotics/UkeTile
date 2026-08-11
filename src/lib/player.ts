@@ -42,15 +42,20 @@ function playNote(midi: number) {
   player.play();
 }
 
-/** Strum the chord from the G string down to the A string. */
-export function playChord(chord: Chord) {
+/**
+ * Strum the chord. 'D' (down) plays string order [G, C, E, A] (top to bottom
+ * on the horizontal chart); 'U' (up) reverses it — the same string order,
+ * just strummed the other way (§33 down/up distinction).
+ */
+export function playChord(chord: Chord, direction: 'D' | 'U' = 'D') {
   ensureAudioMode();
   const notes = chordMidiNotes(chord);
-  notes.forEach((midi, string) => {
-    if (string === 0) {
+  const order = direction === 'D' ? notes : [...notes].reverse();
+  order.forEach((midi, i) => {
+    if (i === 0) {
       playNote(midi);
     } else {
-      setTimeout(() => playNote(midi), string * STRUM_INTERVAL_MS);
+      setTimeout(() => playNote(midi), i * STRUM_INTERVAL_MS);
     }
   });
 }

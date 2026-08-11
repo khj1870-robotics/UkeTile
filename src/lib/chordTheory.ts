@@ -12,22 +12,24 @@ export interface ChordQuality {
   intervals: readonly number[];
 }
 
+// Display order follows the spec (§11): Major, Minor, 7, Minor7, Major7, sus2,
+// sus4, aug, dim first (the P0 set), then the P1 extensions.
 export const CHORD_QUALITIES: ChordQuality[] = [
   { id: 'maj', suffix: '', intervals: [0, 4, 7] },
   { id: 'min', suffix: 'm', intervals: [0, 3, 7] },
   { id: '7', suffix: '7', intervals: [0, 4, 7, 10] },
   { id: 'm7', suffix: 'm7', intervals: [0, 3, 7, 10] },
-  { id: 'maj7', suffix: 'maj7', intervals: [0, 4, 7, 11] },
-  { id: '6', suffix: '6', intervals: [0, 4, 7, 9] },
-  { id: 'm6', suffix: 'm6', intervals: [0, 3, 7, 9] },
+  { id: 'maj7', suffix: 'M7', intervals: [0, 4, 7, 11] },
   { id: 'sus2', suffix: 'sus2', intervals: [0, 2, 7] },
   { id: 'sus4', suffix: 'sus4', intervals: [0, 5, 7] },
+  { id: 'aug', suffix: 'aug', intervals: [0, 4, 8] },
+  { id: 'dim', suffix: 'dim', intervals: [0, 3, 6] },
+  { id: 'dim7', suffix: 'dim7', intervals: [0, 3, 6, 9] },
+  { id: '6', suffix: '6', intervals: [0, 4, 7, 9] },
+  { id: 'm6', suffix: 'm6', intervals: [0, 3, 7, 9] },
   { id: '7sus4', suffix: '7sus4', intervals: [0, 5, 7, 10] },
   { id: 'add9', suffix: 'add9', intervals: [0, 2, 4, 7] },
   { id: '9', suffix: '9', intervals: [0, 2, 4, 7, 10] },
-  { id: 'dim', suffix: 'dim', intervals: [0, 3, 6] },
-  { id: 'dim7', suffix: 'dim7', intervals: [0, 3, 6, 9] },
-  { id: 'aug', suffix: 'aug', intervals: [0, 4, 8] },
 ];
 
 const MAX_SEARCH_FRET = 11;
@@ -51,4 +53,43 @@ export function chordShape(rootPc: number, intervals: readonly number[]): [numbe
 /** Pitch classes actually sounded by a fret shape, one per string. */
 export function shapePitchClasses(frets: readonly [number, number, number, number]): number[] {
   return frets.map((fret, string) => (OPEN_STRING_MIDI[string] + fret) % 12);
+}
+
+/** One string's press in a voicing (§13's minimum data set for a fingering). */
+export interface VoicingNote {
+  string: number;
+  fret: number;
+  open: boolean;
+  mute: boolean;
+  /** 1-4, or null for open/muted strings. */
+  finger: number | null;
+  barre: boolean;
+  startingFret: number;
+}
+
+/**
+ * Derives a full per-string voicing from a fret shape. Finger numbers aren't
+ * hand-authored: pressed strings get fingers 1..4 assigned in ascending fret
+ * order (ties broken by string order), the standard low-fret-gets-low-finger
+ * convention. No shape produced by `chordShape`/`CURATED_SHAPES` currently
+ * needs a barre, so `barre` is always false and `startingFret` always 0 here —
+ * the fields exist so a future hand-authored barre voicing has somewhere to
+ * put that data.
+ */
+export function deriveVoicing(frets: readonly [number, number, number, number]): VoicingNote[] {
+  const pressed = frets
+    .map((fret, string) => ({ fret, string }))
+    .filter((n) => n.fret > 0)
+    .sort((a, b) => a.fret - b.fret || a.string - b.string);
+  const fingerByString = new Map(pressed.map((n, i) => [n.string, Math.min(i + 1, 4)]));
+
+  return frets.map((fret, string) => ({
+    string,
+    fret,
+    open: fret === 0,
+    mute: false,
+    finger: fingerByString.get(string) ?? null,
+    barre: false,
+    startingFret: 0,
+  }));
 }

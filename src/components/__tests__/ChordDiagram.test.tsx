@@ -24,4 +24,22 @@ describe('ChordDiagram', () => {
     const { getByTestId } = render(<ChordDiagram chord={chord} width={60} mirrored />);
     expect(getByTestId('chord-diagram-C-maj')).toBeTruthy();
   });
+
+  it('renders with finger numbers forced on, without crashing', () => {
+    const chord = getChord('C-maj')!;
+    const { getByTestId } = render(<ChordDiagram chord={chord} width={200} showFingerNumbers />);
+    expect(getByTestId('chord-diagram-C-maj')).toBeTruthy();
+  });
+
+  it('renders with finger numbers forced on and mirrored, without crashing', () => {
+    const chord = getChord('A-min')!;
+    const { getByTestId } = render(<ChordDiagram chord={chord} width={200} mirrored showFingerNumbers />);
+    expect(getByTestId(`chord-diagram-${chord.id}`)).toBeTruthy();
+  });
+
+  it('accepts a custom dot color', () => {
+    const chord = getChord('G-maj')!;
+    const { getByTestId } = render(<ChordDiagram chord={chord} width={60} dotColor="#ff00ff" />);
+    expect(getByTestId('chord-diagram-G-maj')).toBeTruthy();
+  });
 });

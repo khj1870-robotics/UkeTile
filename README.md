@@ -1,11 +1,14 @@
 # UkeTile
 
-우쿨렐레 코드를 타일처럼 드래그해서 대시보드에 배치하고 저장하는 코드 조합기 앱.
+우쿨렐레 코드 진행을 마디 위에 배치해 곡을 만들고, BPM에 맞춰 현재/다음 코드와 운지법을 자동으로 넘겨가며 연주할 수 있는 코드 조합기 앱.
 
-- 코드 선택 → 소리 미리듣기 (Karplus-Strong 합성 샘플)
-- 팔레트에서 대시보드로 드래그 → 자석처럼 가장 가까운 빈 칸에 스냅
-- 여러 타일을 선택해 한번에 복제 / 삭제
-- 보드 상태는 기기에 자동 저장 (재시작 후에도 유지)
+- 곡은 마디(4/4, 8개의 반박 slot) 단위 타이밍 그리드로 구성 — 자유 좌표 배치가 아님
+- Root Note(C D E F G A B + ♯/♭) → 코드 종류(Major/Minor/7/...) 순으로 코드 선택
+- 코드 블록을 탭으로 마디에 배치, 드래그로 이동·리사이즈(반박 단위 스냅)
+- 스트로크 프리셋(기본/팝/발라드/커스텀)에 따라 코드 하나가 여러 번 스트럼
+- 연주 화면: 큰 현재 코드 + 가로형 운지법, 다음 코드 미리보기, 진행 타임라인
+- 메트로놈 ON/OFF와 코드 사운드 ON/OFF를 완전히 독립적으로 제어 (합성 샘플, 라이선스 이슈 없음)
+- 곡은 기기에 자동 저장 (재시작 후에도 유지)
 
 ## 로컬 실행
 
@@ -19,13 +22,13 @@ npm run ios      # macOS + Xcode 시뮬레이터
 ## 테스트 / 타입체크
 
 ```bash
-npm test         # jest: 코드→음 계산, 그리드 스냅/복제, 스토어, 다이어그램 렌더링
+npm test         # jest: 코드 이론, 타이밍 그리드 스냅/충돌, 재생 엔진 타임라인/스케줄러, 스토어, 다이어그램 렌더링
 npm run typecheck
 ```
 
 ## 사운드 샘플 재생성
 
-`assets/samples/*.wav`와 `src/data/sampleMap.ts`는 아래 스크립트로 생성된 결과물이며 저장소에 커밋되어 있습니다. 재생성이 필요할 때만 실행하세요.
+`assets/samples/*.wav`(노트 + 메트로놈 클릭)와 `src/data/sampleMap.ts` / `src/data/clickSamples.ts`는 아래 스크립트로 생성된 결과물이며 저장소에 커밋되어 있습니다. 재생성이 필요할 때만 실행하세요.
 
 ```bash
 npm run generate:samples
@@ -61,12 +64,17 @@ iOS는 Apple 정책상 항상 App Store Connect 심사를 거쳐야 하며, 로�
 
 ```
 src/
-  app/            expo-router 화면 (_layout, index)
-  components/     ChordDiagram, TileCard, DraggableTile, Board, Palette, ...
-  data/           코드 라이브러리(chords.ts), 샘플 매핑(sampleMap.ts, 생성됨)
-  hooks/          드래그 보드 좌표/고스트 상태 훅
-  lib/            순수 로직 — chordNotes(코드→음), grid(스냅/복제), player(사운드)
-  state/          zustand 보드 스토어 (AsyncStorage persist)
+  app/            expo-router 화면
+                    index(홈), new-song(새 곡), settings(설정)
+                    song/[id]/edit(편집 화면), song/[id]/play(연주 화면)
+  components/     ChordDiagram, ChordPalette, MiniChordCard, StaffMeasure, ChordBlockTile,
+                  ChordBottomSheet, TransportBar, CurrentChordPanel, NextChordPreview,
+                  PerformanceTimeline, PlaybackControls
+  data/           코드 라이브러리(chords.ts), 곡 데이터 모델(song.ts), 스트로크 프리셋(strokePatterns.ts),
+                  샘플 매핑(sampleMap.ts, clickSamples.ts — 생성됨)
+  lib/            순수 로직 — chordTheory/chordNotes(코드→음·운지), timingGrid(슬롯 스냅/충돌),
+                  playbackEngine(타임라인 계산 + 재생 스케줄러), player/metronome(사운드)
+  state/          zustand 스토어 — songStore(곡, AsyncStorage persist), settingsStore(왼손잡이/카운트인)
 plugins/          Android 서명 config plugin
 scripts/          사운드 샘플 생성 스크립트
 credentials/      Android 릴리스 keystore (커밋됨, 동일 서명 유지용)

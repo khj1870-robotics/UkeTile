@@ -1,7 +1,8 @@
 import React from 'react';
-import Svg, { Circle, G, Line, Rect } from 'react-native-svg';
+import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 
 import { Chord } from '@/data/chords';
+import { deriveVoicing } from '@/lib/chordTheory';
 import { colors } from '@/theme';
 
 interface Props {
@@ -10,6 +11,10 @@ interface Props {
   width: number;
   /** Left-handed mode: mirrors the whole diagram horizontally (nut on the right). */
   mirrored?: boolean;
+  /** Dot/fret-marker color; defaults to the app accent. Lets callers match a chord block's pastel color. */
+  dotColor?: string;
+  /** Show the finger number inside each pressed dot (§13). Auto-enabled once dots are large enough to read. */
+  showFingerNumbers?: boolean;
 }
 
 const FRET_COLS = 4;
@@ -22,7 +27,7 @@ const FRET_COLS = 4;
  * rotating, which isn't a true rotation of the original chart — it read
  * mirrored/backwards.
  */
-export function ChordDiagram({ chord, width, mirrored = false }: Props) {
+export function ChordDiagram({ chord, width, mirrored = false, dotColor, showFingerNumbers }: Props) {
   const height = width * 0.58;
   const paddingLeft = width * 0.16;
   const paddingRight = width * 0.06;
@@ -33,6 +38,9 @@ export function ChordDiagram({ chord, width, mirrored = false }: Props) {
   const stringGap = gridHeight / 3;
   const fretGap = gridWidth / FRET_COLS;
   const dotRadius = Math.min(stringGap, fretGap) * 0.32;
+  const fill = dotColor ?? colors.accent;
+  const voicing = deriveVoicing(chord.frets);
+  const showFingers = showFingerNumbers ?? dotRadius > 9;
 
   // string 0=G .. 3=A in the data; displayed top-to-bottom as A,E,C,G.
   const stringY = (string: number) => paddingV + (3 - string) * stringGap;
@@ -73,25 +81,42 @@ export function ChordDiagram({ chord, width, mirrored = false }: Props) {
         />
       ))}
       {/* Open markers and finger dots */}
-      {chord.frets.map((fret, string) =>
-        fret === 0 ? (
+      {voicing.map((note) =>
+        note.open ? (
           <Circle
-            key={`marker-${string}`}
+            key={`marker-${note.string}`}
             cx={paddingLeft - width * 0.08}
-            cy={stringY(string)}
+            cy={stringY(note.string)}
             r={dotRadius * 0.7}
             stroke={colors.textDim}
             strokeWidth={1.2}
             fill="none"
           />
         ) : (
-          <Circle
-            key={`marker-${string}`}
-            cx={paddingLeft + (fret - 0.5) * fretGap}
-            cy={stringY(string)}
-            r={dotRadius}
-            fill={colors.accent}
-          />
+          <G key={`marker-${note.string}`}>
+            <Circle
+              cx={paddingLeft + (note.fret - 0.5) * fretGap}
+              cy={stringY(note.string)}
+              r={dotRadius}
+              fill={fill}
+            />
+            {showFingers && note.finger !== null && (
+              <SvgText
+                x={paddingLeft + (note.fret - 0.5) * fretGap}
+                y={stringY(note.string)}
+                fontSize={dotRadius * 1.15}
+                fontWeight="700"
+                fill={colors.accentText}
+                textAnchor="middle"
+                alignmentBaseline="central"
+                // Mirrored diagrams flip the whole chart via a -1 X scale on the
+                // parent <G>; flip text back so digits don't render backwards.
+                transform={mirrored ? `scale(-1, 1) translate(${-2 * (paddingLeft + (note.fret - 0.5) * fretGap)}, 0)` : undefined}
+              >
+                {note.finger}
+              </SvgText>
+            )}
+          </G>
         )
       )}
     </>
